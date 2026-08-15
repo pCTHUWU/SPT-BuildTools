@@ -78,6 +78,12 @@ def capacity(tpl):
     carts = db[tpl]["_props"].get("Cartridges") or []
     return carts[0].get("_max_count", 0) if carts else 0
 
+AUTO = False   # set per build in make(); the weapon's own fire modes, never the weighting
+
+def weapon_is_auto(tpl):
+    """Does this weapon hold the trigger down? Read from its fire modes, the one source of truth."""
+    return bool(set(db[tpl]["_props"].get("weapFireType") or []) & {"fullauto", "burst"})
+
 def weapon_weights(tpl):
     """How much ergonomics is worth against recoil, for this kind of gun.
 
@@ -86,14 +92,20 @@ def weapon_weights(tpl):
     +21 ergo stock over a -18 recoil one, and on a bolt-action it pays for recoil control that
     barely matters between shots. Read the fire modes rather than guessing from category names.
     """
-    fire = set((db[tpl]["_props"].get("weapFireType") or []))
-    if fire & {"fullauto", "burst"}:
+    if weapon_is_auto(tpl):
         return (1.0, 2.0)      # holding the trigger down - recoil dominates
     return (1.8, 0.8)          # one shot at a time - handling matters more
 
-def is_auto(w):
-    """weapon_weights gives (1.0, 2.0) to full-auto and (1.8, 0.8) to everything else."""
-    return w[1] > w[0]
+def is_auto():
+    """Whether the weapon being built is automatic.
+
+    This used to infer it from the weighting - `w[1] > w[0]` - which held only while
+    weapon_weights was the sole producer of those tuples. The Pareto sweep broke that invariant:
+    it feeds (1.4, 1.4) and (1.8, 0.8) to genuine automatics, both of which read as semi-auto,
+    so two candidates in every three silently lost their magazine capacity rule and reached for
+    a 10-round PMAG. Read the weapon, not the weights.
+    """
+    return AUTO
 
 def score(tpl, slot="", w=(1.0, 1.0)):
     p = db[tpl]["_props"]
@@ -102,7 +114,7 @@ def score(tpl, slot="", w=(1.0, 1.0)):
         # Capacity is only worth chasing where the magazine actually empties. On a bolt-action or
         # a semi-auto the extra rounds buy little and cost ergonomics and length, so those score
         # on handling like any other part.
-        if not OPT["mag-capacity"] or is_auto(w):
+        if not OPT["mag-capacity"] or is_auto():
             return capacity(tpl)
     return we * (p.get("Ergonomics", 0) or 0) + wr * (-(p.get("Recoil", 0) or 0))
 
@@ -509,7 +521,7 @@ def shape_ok(its, reference, w=(1.0, 1.0)):
     # are the two things the objective is blind to.
     if _mag_footprint(its) > _mag_footprint(reference):
         return False
-    if is_auto(w) and _mag_capacity(its) < _mag_capacity(reference):
+    if is_auto() and _mag_capacity(its) < _mag_capacity(reference):
         return False
     return True
 
@@ -742,8 +754,9 @@ def _knee(pool):
                                  + norm(p[0][2], min(rc), max(rc), invert=True))
 
 def make(weapon_tpl):
-    global POLICY
+    global POLICY, AUTO
     POLICY = optic_policy(weapon_tpl)
+    AUTO = weapon_is_auto(weapon_tpl)
 
     if not OPT["pareto"]:
         w = weapon_weights(weapon_tpl)
@@ -796,7 +809,7 @@ for want, short in WANTED:
     })
     ergo, up, back, pct, acc = build_stats(items)
     STATS.append((short, ergo, up, pct))
-    kind = "auto" if w[1] > w[0] else "semi"
+    kind = "auto" if weapon_is_auto(tpl) else "semi"
     print(f"  {short:<12} {len(items):>3} parts  {kind}  ergo {ergo:>4.0f}  "
           f"recoil {up:>5.0f}/{back:>5.0f} ({pct:+.0f}%)  acc {acc:+4.0f}   {want}")
 
