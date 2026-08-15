@@ -8,9 +8,9 @@ Default: M4A1 only.  --all: every weapon in the game.  --write saves.
 Only ever touches builds tagged '(LL)'.
 """
 import json, os, random, sys, collections
-from options import OPT, ITEMS, LOCALE, resolve_profile
+from options import OPT, DB_DIR, resolve_profile
 
-ROOT = "C:/SPT/SPT_Runtime/SPT_Data/database"
+ROOT = DB_DIR
 PROF = resolve_profile()
 M4A1 = "5447a9cd4bdc2dbd208b4567"
 TAG  = "(LL)"
@@ -80,11 +80,17 @@ def weapon_weights(tpl):
         return (1.0, 2.0)
     return (1.8, 0.8)
 
+def is_auto(w):
+    """weapon_weights gives (1.0, 2.0) to full-auto and (1.8, 0.8) to everything else."""
+    return w[1] > w[0]
+
 def score(tpl, slot="", w=(1.0, 1.0)):
     p = db[tpl]["_props"]
-    if slot == "mod_magazine":
-        return capacity(tpl)
     we, wr = w
+    if slot == "mod_magazine":
+        # Capacity is only worth chasing where the magazine actually empties - see make_builds.py.
+        if not OPT["mag-capacity"] or is_auto(w):
+            return capacity(tpl)
     return we * (p.get("Ergonomics", 0) or 0) + wr * (-(p.get("Recoil", 0) or 0))
 
 def build_stats(items):
@@ -159,6 +165,11 @@ def is_combo(tpl):
 
 def is_suppressor(tpl):
     return "Silencer" in categories(tpl)
+
+def mag_slots(tpl):
+    """Grid footprint. A standard rifle magazine is 1x2; drums and long extendeds are 1x3 or 2x2."""
+    p = db.get(tpl, {}).get("_props") or {}
+    return (p.get("Width") or 0) * (p.get("Height") or 0)
 
 _zoom = {}
 def zoom_levels(tpl):
@@ -261,6 +272,13 @@ def narrow(cands, slot_name, placed):
         if lights:
             cands = lights
 
+    # See make_builds.py. Capacity scoring always reaches for the biggest magazine, which is
+    # usually the one that eats a third rig slot. Give way where a gun has nothing smaller.
+    if OPT["compact-mags"] and (slot_name or "").startswith("mod_magazine"):
+        compact = [c for c in cands if mag_slots(c) <= 2]
+        if compact:
+            cands = compact
+
     if OPT["suppressor"] and (slot_name or "").startswith("mod_muzzle"):
         sup = [c for c in cands if is_suppressor(c)]
         if sup:
@@ -287,7 +305,16 @@ def narrow(cands, slot_name, placed):
                 break
     return cands
 
-def shape_ok(its, reference):
+def is_magazine(tpl):
+    return "Magazine" in categories(tpl)
+
+def _mag_footprint(its):
+    return max((mag_slots(i["_tpl"]) for i in its if is_magazine(i["_tpl"])), default=0)
+
+def _mag_capacity(its):
+    return max((capacity(i["_tpl"]) for i in its if is_magazine(i["_tpl"])), default=0)
+
+def shape_ok(its, reference, w=(1.0, 1.0)):
     """Every preference costs ergonomics or recoil, so refinement would trade them all away."""
     if sum(1 for i in its if is_optic(i["_tpl"])) > 1:
         return False
@@ -296,6 +323,12 @@ def shape_ok(its, reference):
             return False
     if any(is_optic(i["_tpl"]) and len(zoom_levels(i["_tpl"])) > 1 for i in reference) and \
        not any(is_optic(i["_tpl"]) and len(zoom_levels(i["_tpl"])) > 1 for i in its):
+        return False
+    # Never grow the magazine footprint, and on an automatic never shrink its capacity - the
+    # objective is blind to both.
+    if _mag_footprint(its) > _mag_footprint(reference):
+        return False
+    if is_auto(w) and _mag_capacity(its) < _mag_capacity(reference):
         return False
     return True
 
@@ -423,7 +456,7 @@ def refine(items, w, level, rounds=3, breadth=6):
                 alts.sort(key=lambda c: score(c, node["slotId"], w), reverse=True)
                 for alt in alts[:breadth]:
                     cand = _swap(best, node, alt, w, level)
-                    if cand and shape_ok(cand, best) and objective(cand, w) > objective(best, w) + 1e-9:
+                    if cand and shape_ok(cand, best, w) and objective(cand, w) > objective(best, w) + 1e-9:
                         best, improved = cand, True
                         break
                 if improved:

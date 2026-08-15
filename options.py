@@ -76,6 +76,20 @@ TOGGLES = [
      "Give the first tactical slot to a light, preferring an AN/PEQ-style combo over a bare "
      "torch. These score zero on ergonomics and recoil, so without this they always lose."),
 
+    ("compact-mags", True,
+     "No magazines wider than 2 slots",
+     "Skip magazines that take 3 or more grid slots. An extended magazine that still fits in the "
+     "usual 2 is fine - the AK-74N takes a 60-round 6L31 in two slots, where the 3-slot option "
+     "holds only 45. Where a gun has nothing smaller the rule gives way rather than leaving it "
+     "unfed, which is the case for 22 builds. Note some famous 2-slot extendeds (the SureFire "
+     "MAG5-60) are not flea-obtainable in this version and are excluded by `usable` first."),
+
+    ("mag-capacity", True,
+     "Magazine capacity only matters on automatics",
+     "On a bolt-action or semi-auto the extra rounds buy little and cost ergonomics and length, "
+     "so magazines there are judged on handling like any other part. Off, every gun reaches for "
+     "the biggest magazine it can take."),
+
     ("refine", True,
      "Refine the finished gun",
      "After building, sweep the weapon swapping parts for alternatives and keep anything that "

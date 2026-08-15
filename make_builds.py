@@ -91,11 +91,19 @@ def weapon_weights(tpl):
         return (1.0, 2.0)      # holding the trigger down - recoil dominates
     return (1.8, 0.8)          # one shot at a time - handling matters more
 
+def is_auto(w):
+    """weapon_weights gives (1.0, 2.0) to full-auto and (1.8, 0.8) to everything else."""
+    return w[1] > w[0]
+
 def score(tpl, slot="", w=(1.0, 1.0)):
     p = db[tpl]["_props"]
-    if slot == "mod_magazine":
-        return capacity(tpl)
     we, wr = w
+    if slot == "mod_magazine":
+        # Capacity is only worth chasing where the magazine actually empties. On a bolt-action or
+        # a semi-auto the extra rounds buy little and cost ergonomics and length, so those score
+        # on handling like any other part.
+        if not OPT["mag-capacity"] or is_auto(w):
+            return capacity(tpl)
     return we * (p.get("Ergonomics", 0) or 0) + wr * (-(p.get("Recoil", 0) or 0))
 
 def build_stats(items):
@@ -178,6 +186,11 @@ def is_combo(tpl):
 
 def is_suppressor(tpl):
     return "Silencer" in categories(tpl)
+
+def mag_slots(tpl):
+    """Grid footprint. A standard rifle magazine is 1x2; drums and long extendeds are 1x3 or 2x2."""
+    p = db.get(tpl, {}).get("_props") or {}
+    return (p.get("Width") or 0) * (p.get("Height") or 0)
 
 _zoom = {}
 def zoom_levels(tpl):
@@ -304,6 +317,15 @@ def narrow(cands, slot_name, placed):
     # Suppressed by preference. Where the muzzle slot takes a silencer directly, use one; where it
     # does not, the best-scoring device often *is* a thread adapter, and this same rule applies
     # again at its own muzzle slot on the way down.
+    # Magazines are scored on capacity, which always reaches for the biggest one - and the biggest
+    # is usually the one that eats a third rig slot. An extended magazine that still fits the usual
+    # two is worth having; a drum is not. Where a gun has nothing smaller, take what there is
+    # rather than leave it unfed.
+    if OPT["compact-mags"] and (slot_name or "").startswith("mod_magazine"):
+        compact = [c for c in cands if mag_slots(c) <= 2]
+        if compact:
+            cands = compact
+
     if OPT["suppressor"] and (slot_name or "").startswith("mod_muzzle"):
         sup = [c for c in cands if is_suppressor(c)]
         if sup:
@@ -339,10 +361,23 @@ def narrow(cands, slot_name, placed):
                 break
     return cands
 
-def shape_ok(its, reference):
+def is_magazine(tpl):
+    return "Magazine" in categories(tpl)
+
+def _mag_footprint(its):
+    return max((mag_slots(i["_tpl"]) for i in its if is_magazine(i["_tpl"])), default=0)
+
+def _mag_capacity(its):
+    return max((capacity(i["_tpl"]) for i in its if is_magazine(i["_tpl"])), default=0)
+
+def shape_ok(its, reference, w=(1.0, 1.0)):
     """Refinement optimises ergonomics and recoil, and every preference here costs one or both:
     a suppressor is heavy, a combo light adds nothing, a variable optic weighs more than a dot.
-    Left alone it would trade all of them away for a couple of points. Hold the shape."""
+    Left alone it would trade all of them away for a couple of points. Hold the shape.
+
+    Magazines are the worst case, because `objective` cannot see capacity at all. Left to itself
+    refinement put a 40-round three-slot PMAG on the M4A1 when a 60-round two-slot MAG5 was
+    available - worse on both counts, but better on ergonomics."""
     if sum(1 for i in its if is_optic(i["_tpl"])) > 1:
         return False
 
@@ -359,6 +394,13 @@ def shape_ok(its, reference):
     # Don't let a toggling optic be swapped for a fixed one.
     if had(lambda t: is_optic(t) and len(zoom_levels(t)) > 1) and \
        not has(lambda t: is_optic(t) and len(zoom_levels(t)) > 1):
+        return False
+
+    # Never grow the magazine's footprint, and on an automatic never shrink its capacity - those
+    # are the two things the objective is blind to.
+    if _mag_footprint(its) > _mag_footprint(reference):
+        return False
+    if is_auto(w) and _mag_capacity(its) < _mag_capacity(reference):
         return False
     return True
 
@@ -480,7 +522,7 @@ def refine(items, w, rounds=3, breadth=6):
                 alts.sort(key=lambda c: score(c, node["slotId"], w), reverse=True)
                 for alt in alts[:breadth]:
                     cand = _swap(best, node, alt, w)
-                    if cand and shape_ok(cand, best) and objective(cand, w) > objective(best, w) + 1e-9:
+                    if cand and shape_ok(cand, best, w) and objective(cand, w) > objective(best, w) + 1e-9:
                         best, improved = cand, True
                         break
                 if improved:

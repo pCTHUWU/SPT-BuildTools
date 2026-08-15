@@ -37,6 +37,8 @@ running, and takes a timestamped profile backup first.
 | Match optic to calibre | The ergonomics score picks a red dot for nearly everything. |
 | Prefer suppressed | Muzzle devices chosen on stats alone. |
 | Fit a light/laser combo | Lights score zero on ergonomics and recoil, so they lose every contest. |
+| No magazines wider than 2 slots | Drums and long extendeds get fitted. 80 builds carried an oversized magazine that had a smaller alternative. |
+| Capacity only matters on automatics | Bolt-actions and semi-autos reach for the biggest magazine they can take, paying ergonomics and length for rounds they will not fire. |
 | Refine the finished gun | Parts are chosen per slot with no view of the finished weapon. |
 
 Everything defaults on. Flags follow the same names: `--no-suppressor`, `--no-refine`, and so on.
@@ -102,6 +104,15 @@ only path to a sight on guns where the mount carries it.
 
 **Mod `Recoil` values are percentages** applied to the weapon's own `RecoilForceUp`/`Back`. They sum
 and then scale, so they are not additive with ergonomics and cannot be compared part-by-part.
+
+**Refinement cannot see magazine capacity**, because `objective` is only ergonomics and recoil. Left
+to itself it put a 40-round three-slot PMAG on the M4A1 when a two-slot 60-round magazine was
+available — worse on both counts, but better on ergonomics. `shape_ok` now refuses any swap that
+grows the magazine's footprint, or that shrinks its capacity on an automatic.
+
+**`usable` requires a part be flea-obtainable**, since these builds exist to exercise the flea
+purchase path. That legitimately excludes some well-known magazines — the SureFire MAG5-60 has
+`CanSellOnRagfair: false` — so the best two-slot option is not always the one you would expect.
 
 ## How parts are chosen
 
