@@ -14,10 +14,13 @@ screen. MISSING_REQ is reported separately: it is usually intentional for
 things like an empty magazine slot, so it is a warning, not a failure.
 """
 import io, json, sys
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from options import ITEMS, resolve_profile
 from collections import defaultdict
 
-PROFILE = r"C:\SPT\SPT_Runtime\user\profiles\6a751c000164cc5fb0ccc217.json"
-ITEMS   = r"C:\SPT\SPT_Runtime\SPT_Data\database\templates\items.json"
+PROFILE = resolve_profile()
+ITEMS = ITEMS
 
 items = json.load(io.open(ITEMS, encoding="utf-8"))
 prof  = json.load(io.open(PROFILE, encoding="utf-8"))

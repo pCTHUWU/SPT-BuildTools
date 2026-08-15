@@ -1,10 +1,13 @@
 """Did the stated preferences actually land? Suppressed, light/laser combo, and a sight that
 suits the calibre - no zoom on pistol-calibre automatics, a toggling optic on rifles."""
 import io, json
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from options import ITEMS, resolve_profile
 from collections import Counter
 
-items = json.load(io.open(r"C:\SPT\SPT_Runtime\SPT_Data\database\templates\items.json", encoding="utf-8"))
-prof = json.load(io.open(r"C:\SPT\SPT_Runtime\user\profiles\6a751c000164cc5fb0ccc217.json", encoding="utf-8"))
+items = json.load(io.open(ITEMS, encoding="utf-8"))
+prof = json.load(io.open(resolve_profile(), encoding="utf-8"))
 
 _c = {}
 def cats(t):

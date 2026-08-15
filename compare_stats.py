@@ -1,7 +1,10 @@
 """Compare finished-weapon stats between two profile snapshots, matched by build name."""
 import io, json, sys
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from options import ITEMS
 
-ITEMS = r"C:\SPT\SPT_Runtime\SPT_Data\database\templates\items.json"
+ITEMS = ITEMS
 items = json.load(io.open(ITEMS, encoding="utf-8"))
 
 def stats(its):

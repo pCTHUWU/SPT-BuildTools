@@ -8,9 +8,10 @@ Default: M4A1 only.  --all: every weapon in the game.  --write saves.
 Only ever touches builds tagged '(LL)'.
 """
 import json, os, random, sys, collections
+from options import OPT, ITEMS, LOCALE, resolve_profile
 
 ROOT = "C:/SPT/SPT_Runtime/SPT_Data/database"
-PROF = "C:/SPT/SPT_Runtime/user/profiles/6a751c000164cc5fb0ccc217.json"
+PROF = resolve_profile()
 M4A1 = "5447a9cd4bdc2dbd208b4567"
 TAG  = "(LL)"
 WEAPON_BASE = "5422acb9af1c889c16000029"
@@ -123,6 +124,8 @@ def conflicts(tpl):
     return _conf[tpl]
 
 def compatible(tpl, placed):
+    if not OPT["conflicts"]:
+        return True
     # Recorded one-directionally in the database, so check both ways.
     if conflicts(tpl) & placed:
         return False
@@ -246,32 +249,32 @@ def narrow(cands, slot_name, placed):
     """See make_builds.py. One optic per gun - receiver, handguard and side mount each offer a
     scope slot and scoring them in isolation fits an optic in all three. And a light scores zero
     on ergonomics and recoil so it loses every contest on merit; give it the first tactical slot."""
-    if any(is_optic(p) for p in placed):
+    if OPT["one-optic"] and any(is_optic(p) for p in placed):
         # Where every candidate is an optic - a dedicated scope mount - leave the slot empty
         # rather than fitting a second sight.
         cands = [c for c in cands if not is_optic(c)]
         if not cands:
             return []
-    if (slot_name or "").startswith("mod_tactical") and not any(is_light(p) for p in placed):
+    if OPT["light"] and (slot_name or "").startswith("mod_tactical") and not any(is_light(p) for p in placed):
         combos = [c for c in cands if is_combo(c)]
         lights = combos or [c for c in cands if is_light(c)]
         if lights:
             cands = lights
 
-    if (slot_name or "").startswith("mod_muzzle"):
+    if OPT["suppressor"] and (slot_name or "").startswith("mod_muzzle"):
         sup = [c for c in cands if is_suppressor(c)]
         if sup:
             cands = sup
 
     # A short barrel that conflicts with every silencer rules out suppressing the gun before the
     # muzzle slot is reached. Prefer barrels that leave the option open.
-    if (slot_name or "").startswith("mod_barrel"):
+    if OPT["suppressor"] and (slot_name or "").startswith("mod_barrel"):
         friendly = [c for c in cands if suppressor_friendly(c, placed)]
         if friendly:
             cands = friendly
 
     # Drop unwanted optics but keep everything else - a mount is often how the optic attaches.
-    optics = [c for c in cands if is_optic(c)]
+    optics = [c for c in cands if is_optic(c)] if OPT["optic-policy"] else []
     if optics:
         for tier in optic_tiers(optics, POLICY):
             if tier:
@@ -343,7 +346,7 @@ def grow(tpl, parent_id, slot_name, depth, chain, placed, w, level, out):
             # slot was simply skipped - leaving 55 builds with no shoulder stock at all. These
             # builds are explicitly the flea-fallback test, so a stock that has to come off the
             # flea is the expected answer, not a reason to go without.
-            must = s["_required"] or is_stock_slot(s)
+            must = s["_required"] or (OPT["stock"] and is_stock_slot(s))
 
             tiers = [[c for c in allowed
                       if usable(c) and c not in chain
@@ -397,6 +400,8 @@ def refine(items, w, level, rounds=3, breadth=6):
 
     Alternatives are restricted to what this loyalty tier can actually buy, so refinement cannot
     quietly smuggle in a part the tier was meant to exclude."""
+    if not OPT["refine"]:
+        return items
     global RECORDING
     was, RECORDING = RECORDING, False
     best = items

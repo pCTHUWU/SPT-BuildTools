@@ -1,0 +1,14 @@
+AI AUTHORSHIP NOTICE
+
+Effectively all of this software -- the design, the code, the debugging and the
+documentation -- was written by Claude (Anthropic), an AI, working under the
+direction of the copyright holder. The copyright holder set the goals, ran the
+result, and reported what broke; the AI did the engineering. That includes the
+parts that were wrong at first, and the fixes for them.
+
+This is stated plainly because you should know what you are running. Read the
+source before you trust it with a profile you care about, and keep backups.
+
+This notice is kept separate from LICENSE so that the licence text stays
+byte-for-byte standard and remains machine-identifiable. It is not a licence
+term and does not modify the terms in LICENSE.

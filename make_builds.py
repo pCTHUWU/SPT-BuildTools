@@ -7,10 +7,11 @@ scored on capacity instead, since ergonomics alone picks a 10-round PMAG.
 Preview by default; pass --write to save into the profile.
 """
 import json, random, sys
+from options import OPT, ITEMS, LOCALE, resolve_profile
 
-DB   = "C:/SPT/SPT_Runtime/SPT_Data/database/templates/items.json"
-LOC  = "C:/SPT/SPT_Runtime/SPT_Data/database/locales/global/en.json"
-PROF = "C:/SPT/SPT_Runtime/user/profiles/6a751c000164cc5fb0ccc217.json"
+DB   = ITEMS
+LOC  = LOCALE
+PROF = resolve_profile()
 
 WEAPON_BASE = "5422acb9af1c889c16000029"   # Weapon
 TAG = "(meta)"                              # marks builds this script owns
@@ -141,6 +142,8 @@ def conflicts(tpl):
     return _conf[tpl]
 
 def compatible(tpl, placed):
+    if not OPT["conflicts"]:
+        return True
     # The database records these one-directionally - the handguard names the barrel but not the
     # reverse - so both directions have to be checked or roughly half go unnoticed.
     if conflicts(tpl) & placed:
@@ -283,14 +286,15 @@ def narrow(cands, slot_name, placed):
     contest on merit and 37% of builds ended up with nothing to see in the dark with. Give the
     first tactical slot to a light, then let the score decide the rest.
     """
-    if any(is_optic(p) for p in placed):
+    if OPT["one-optic"] and any(is_optic(p) for p in placed):
         # Where the slot offers something else, take that. Where every candidate is an optic -
         # a dedicated scope mount - leave it empty. Falling back to "fit one anyway" is what kept
         # a second sight on 20% of builds after the first attempt at this.
         cands = [c for c in cands if not is_optic(c)]
         if not cands:
             return []
-    if (slot_name or "").startswith("mod_tactical") and not any(is_light(p) for p in placed):
+    if OPT["light"] and (slot_name or "").startswith("mod_tactical") \
+            and not any(is_light(p) for p in placed):
         # Prefer a light/laser combo over a bare torch - that is the AN/PEQ family.
         combos = [c for c in cands if is_combo(c)]
         lights = combos or [c for c in cands if is_light(c)]
@@ -300,7 +304,7 @@ def narrow(cands, slot_name, placed):
     # Suppressed by preference. Where the muzzle slot takes a silencer directly, use one; where it
     # does not, the best-scoring device often *is* a thread adapter, and this same rule applies
     # again at its own muzzle slot on the way down.
-    if (slot_name or "").startswith("mod_muzzle"):
+    if OPT["suppressor"] and (slot_name or "").startswith("mod_muzzle"):
         sup = [c for c in cands if is_suppressor(c)]
         if sup:
             cands = sup
@@ -308,7 +312,7 @@ def narrow(cands, slot_name, placed):
     # The barrel decides the muzzle before the muzzle slot is ever reached: a short barrel that
     # conflicts with every silencer quietly rules out suppressing the gun. Prefer barrels that
     # leave the option open.
-    if (slot_name or "").startswith("mod_barrel"):
+    if OPT["suppressor"] and (slot_name or "").startswith("mod_barrel"):
         friendly = [c for c in cands if suppressor_friendly(c, placed)]
         if friendly:
             cands = friendly
@@ -319,7 +323,7 @@ def narrow(cands, slot_name, placed):
     # Drop the optics we do not want but KEEP everything else in the slot. Most scope slots offer
     # mounts alongside optics, and the mount is often how the optic attaches at all - filtering the
     # slot down to optics broke that path, so this only ever narrows which *optic* can win.
-    optics = [c for c in cands if is_optic(c)]
+    optics = [c for c in cands if is_optic(c)] if OPT["optic-policy"] else []
     if optics:
         for tier in optic_tiers(optics, POLICY):
             if tier:
@@ -418,7 +422,7 @@ def grow(tpl, parent_id, slot_name, depth, chain, placed, w, out):
         allowed = s["_props"]["filters"][0]["Filter"]
         # A stock is must-fill even where the database marks it optional - a rifle without one
         # is not a build worth saving.
-        cands, forced = pick(allowed, chain, placed, s["_required"] or is_stock_slot(s))
+        cands, forced = pick(allowed, chain, placed, s["_required"] or (OPT["stock"] and is_stock_slot(s)))
         if not cands:
             continue
         if forced and RECORDING:
@@ -454,6 +458,8 @@ def refine(items, w, rounds=3, breadth=6):
     """Greedy fills each slot knowing nothing about what comes after it, so a part chosen early
     can be a poor fit for the finished gun. Sweep the built weapon and try swapping each part for
     its alternatives, keeping any change that improves the weapon as a whole."""
+    if not OPT["refine"]:
+        return items
     global RECORDING
     was, RECORDING = RECORDING, False
     best = items

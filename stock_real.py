@@ -5,10 +5,13 @@ candidates actually do: a real stock gives a large recoil reduction, a pad or ch
 one. Threshold checked against the data below before being applied.
 """
 import io, json
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from options import ITEMS, resolve_profile
 from collections import Counter
 
-ITEMS = r"C:\SPT\SPT_Runtime\SPT_Data\database\templates\items.json"
-NOW   = r"C:\SPT\SPT_Runtime\user\profiles\6a751c000164cc5fb0ccc217.json"
+ITEMS = ITEMS
+NOW = resolve_profile()
 items = json.load(io.open(ITEMS, encoding="utf-8"))
 
 def nm(t):

@@ -1,8 +1,11 @@
 """What does the database expose for optic magnification, suppressors and light/laser combos?"""
 import io, json
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from options import ITEMS
 from collections import Counter
 
-items = json.load(io.open(r"C:\SPT\SPT_Runtime\SPT_Data\database\templates\items.json", encoding="utf-8"))
+items = json.load(io.open(ITEMS, encoding="utf-8"))
 byname = {v.get("_name"): k for k, v in items.items()}
 
 _c = {}
