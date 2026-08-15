@@ -13,8 +13,8 @@ compromise into a scav run and a raid kit, and it is the wrong one for both.
 
 Preview by default; pass --write to save.  --all writes one loadout per loyalty tier.
 """
-import collections, json, io, sys
-from options import OPT, resolve_profile
+import collections, json, io, os, sys
+from options import OPT, ITEMS, resolve_profile
 from buildlib import (db, loc, name, new_id, categories, conflicts, loyalty, buyable_now,
                       dominates, pareto_front, _knee)
 
@@ -61,7 +61,11 @@ def hearing(tpl):
     """Sprint hearing distance in metres. Unknown headsets fall back to bare ears rather than an
     optimistic guess - a headset nobody has measured should not win on assumption."""
     n = (name(tpl) or "").lower()
-    for frag, m in HEADSET_RANGE:
+    # Longest fragment first. "ComTac V" is a substring of "ComTac VI", so plain list order only
+    # works while VI happens to sit above V - reorder the table and every ComTac VI silently
+    # matches V instead. Both read 67m today, so this costs nothing now and stops a later edit
+    # introducing a wrong number quietly. GearTierColors guards the same collision the same way.
+    for frag, m in sorted(HEADSET_RANGE, key=lambda fm: -len(fm[0])):
         if frag.lower() in n:
             return m
     return NO_EARPIECE_RANGE
@@ -98,6 +102,22 @@ def expand(filt):
     return _expanded[key]
 
 
+# The highest armour class a player can actually obtain. Above this is boss or dev kit - the
+# development balaclava reads class 10 at 0.1kg while covering no zones at all, so it is the best
+# armour-per-gram in the database and wins outright the moment a build is allowed to reach it.
+# kit_audit uses the same number; it is defined here so there is one of it.
+ARMOUR_SANITY = 6
+
+_priced = None
+def priced(tpl):
+    """Does the game put a handbook price on this? Loaded lazily so import order cannot bite."""
+    global _priced
+    if _priced is None:
+        hb_path = os.path.join(os.path.dirname(ITEMS), "handbook.json")
+        _priced = {i["Id"] for i in json.load(io.open(hb_path, encoding="utf-8")).get("Items", [])}
+    return tpl in _priced
+
+
 def usable(tpl):
     it = db.get(tpl)
     if not it or not it.get("_props") or it["_props"].get("QuestItem"):
@@ -106,6 +126,17 @@ def usable(tpl):
     # Dev and event kit that would win every axis at once. The 300-cell endless backpack is the
     # obvious one; anything unobtainable is a build nobody can actually assemble.
     if p.get("CanSellOnRagfair") is False and tpl not in loyalty:
+        return False
+    # Two holes that only opened once the meta tier stopped filtering by loyalty, and that name
+    # matching cannot close: "Fischer Development" is a real manufacturer and "DevTac" a real brand,
+    # while the worst offender - `endlessBackpack`, 300 cells at 1.2kg - is dressed up as a
+    # "Mystery Ranch Terraplane backpack" and matches nothing.
+    #
+    # The game never gives it a handbook price, which is the honest tell.
+    if not priced(tpl):
+        return False
+    # And class 10 on a 0.1kg face cover is not gear, whatever the flea flag says.
+    if num(p.get("armorClass")) > ARMOUR_SANITY:
         return False
     return True
 
@@ -321,15 +352,20 @@ def label(items):
             f"weight {wt:>6.2f}kg  penalty {pen:>5.1f}")
 
 
-levels = [1, 2, 3, 4] if "--all" in sys.argv else [4]
+# None means no loyalty filter at all - best in slot from everything obtainable, the equipment
+# equivalent of the weapon generator's (meta) builds. fill() already honours it; nothing ever
+# passed it. Flea-only gear is fair game here, which is the whole point: a meta loadout assumes
+# max standing and full availability, exactly as the weapon meta builds do.
+levels = ([None, 1, 2, 3, 4] if "--all" in sys.argv else [None])
 builds = []
 for lvl in levels:
     items = make(lvl)
-    builds.append({"Id": new_id(), "Name": f"kit - loyalty lvl {lvl} {TAG}",
+    tier_name = "meta" if lvl is None else f"loyalty lvl {lvl}"
+    builds.append({"Id": new_id(), "Name": f"kit - {tier_name} {TAG}",
                    "Root": items[0]["_id"], "Items": items, "BuildType": "Custom"})
     worn = [i for i in items if i.get("parentId") == items[0]["_id"]]
     buy = sum(1 for i in items[1:] if buyable_now(i["_tpl"]))
-    print(f"  loyalty lvl {lvl}: {len(items)-1:>2} pieces  {label(items)}   "
+    print(f"  {tier_name:<14}: {len(items)-1:>2} pieces  {label(items)}   "
           f"{buy} buyable now")
     for i in worn:
         kids = [k for k in items if k.get("parentId") == i["_id"]]

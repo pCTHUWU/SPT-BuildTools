@@ -522,9 +522,15 @@ def grow(tpl, parent_id, slot_name, depth, chain, placed, w, out):
             continue
         if forced and RECORDING:
             FORCED.append(f"{name(tpl)}.{s['_name']}")
-        cands = narrow(cands, s["_name"], placed, chain + (tpl,))
+        # Narrowing may empty a slot on purpose - a second optic mount, a launcher, a plate past
+        # the mount cap. It must never do that to a REQUIRED slot, because the game will not
+        # assemble the parent without it. MAX_MOUNTS was refusing the Geissele mount's ring cap,
+        # which is required, and left 25 builds with an unfillable hole that surfaced only as a
+        # validate warning.
+        narrowed = narrow(cands, s["_name"], placed, chain + (tpl,))
+        cands = narrowed if narrowed or not s["_required"] else cands
         if not cands:
-            continue          # narrow() can empty a slot on purpose - a second optic mount
+            continue
         best = max(cands, key=lambda c: score(c, s["_name"], w))
         grow(best, node["_id"], s["_name"], depth + 1, chain + (tpl,), placed, w, out)
 

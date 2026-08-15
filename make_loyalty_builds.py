@@ -417,9 +417,13 @@ def grow(tpl, parent_id, slot_name, depth, chain, placed, w, level, out):
                     continue
                 if RECORDING:
                     FORCED.append(f"{name(tpl)}.{s['_name']}")
-            pool = narrow(pool, s["_name"], placed, chain + (tpl,))
+            # Narrowing may empty a slot on purpose, but never a REQUIRED one - the game will not
+            # assemble the parent without it. See make_builds.py; MAX_MOUNTS was refusing the
+            # Geissele ring cap and leaving an unfillable hole.
+            narrowed = narrow(pool, s["_name"], placed, chain + (tpl,))
+            pool = narrowed if narrowed or not s["_required"] else pool
             if not pool:
-                continue      # narrow() can empty a slot on purpose - a second optic mount
+                continue
             best = max(pool, key=lambda c: score(c, s["_name"], w))
             add(best, node["_id"], s["_name"], depth + 1, chain + (tpl,))
     add(tpl, parent_id, slot_name, depth, chain)
