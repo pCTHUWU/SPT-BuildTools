@@ -32,6 +32,7 @@ running, and takes a timestamped profile backup first.
 | Toggle | Off means |
 |---|---|
 | Respect part conflicts | Ignore `ConflictingItems`. Produces builds the game refuses to assemble — it is there to show what the rule is worth, not as a normal setting. |
+| Shortest route to the sight *(off by default)* | On, the sight mounts directly where it fits and otherwise takes the shortest chain. It does clear the mount towers, but it also cost rifle-calibre builds 58 magnified optics in testing and the cause is not yet understood - see below. |
 | Drop parts that earn nothing | Off, 413 mounts and rails stay fitted while carrying nothing and giving nothing — an Aimpoint spacer with no Aimpoint on it, 258 times. Bipods are kept on bolt-actions, marksman rifles and machine guns, and dropped from anything else. |
 | Fit underbarrel launchers *(off by default)* | On, a GP-25 or M203 gets hung under anything that takes one. It conflicts with 72 other parts, so 43 of the 57 builds that had one carried no foregrip at all. Weapons that *are* launchers are unaffected. |
 | Only use parts sellable on the flea *(off by default)* | On, every part must be `CanSellOnRagfair`. Availability that matters is the trader level a build describes, and meta builds assume max standing — so this is off. Turn it on only to exercise a flea-buying mod. |
@@ -56,6 +57,7 @@ Everything defaults on. Flags follow the same names: `--no-suppressor`, `--no-re
 | `stock_real.py` | Builds left without a shoulder stock. Should report zero. |
 | `sights_lights.py` | Sights and light sources per build. |
 | `prefs_audit.py` | Whether the preferences actually landed. |
+| `mount_audit.py` | What each build pays to mount its sight, and how long the chain is. |
 | `slot_audit.py` | Slots filled for no gain - empty mounts, dead weight, hopeless slots. |
 | `probe_launchers.py` | Where launchers get fitted and what they displace. |
 | `compare_stats.py <old> <new>` | Finished-weapon ergonomics and recoil between two profile snapshots. |
@@ -131,6 +133,18 @@ it — and made the best two-slot magazine look worse than it is. A part needs t
 the trader level a build describes; meta builds assume max standing and full availability. The old
 behaviour survives as the `flea-only` toggle, off by default, for when the builds are being used to
 exercise a flea-buying mod.
+
+## An unfinished one: mount towers
+
+`mount_audit.py` shows 15 builds stacking three or more mounting parts under one sight. The VSK-94
+took four - a dovetail adapter, a rail base, a riser and scope rings - and because mount plates read
+*positive* on ergonomics, the chain netted +1.5, so nothing in the objective ever objected.
+
+The `short-mounts` toggle addresses it and does remove every tower. It also cost rifle-calibre
+builds 58 of their magnified optics (83 scopes down to 15), which is a worse trade than the towers
+it fixes. Capping the chain at two parts, capping at three, and fixing a memoisation cycle guard all
+left the numbers byte-identical, so whatever decides those slots is somewhere this has not looked
+yet. Off by default until that is understood.
 
 ## How parts are chosen
 

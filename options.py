@@ -76,6 +76,16 @@ TOGGLES = [
      "Give the first tactical slot to a light, preferring an AN/PEQ-style combo over a bare "
      "torch. These score zero on ergonomics and recoil, so without this they always lose."),
 
+    ("short-mounts", False,
+     "Shortest route to the sight",
+     "Mount the sight directly where it fits, and otherwise take the shortest mount chain. Mount "
+     "plates score positively on ergonomics, so without this the optimiser is rewarded for "
+     "stacking them - the VSK-94 ended up with four mounting parts under one scope, netting +1.5 "
+     "ergonomics so nothing in the objective ever objected.\n\nOFF by default: it does remove the "
+     "towers, but it also cost rifle-calibre builds 58 of their magnified optics (83 scopes down "
+     "to 15) and the cause is not yet understood - capping the chain and fixing the memo both "
+     "left the numbers byte-identical, so the deciding code is somewhere else."),
+
     ("prune-empty", True,
      "Drop parts that earn nothing",
      "After building, remove any mount or rail left carrying nothing that also gives no "

@@ -267,6 +267,63 @@ def optic_tiers(cands, policy):
         ranked.setdefault(optic_rank(c, policy), []).append(c)
     return [ranked[k] for k in sorted(ranked)]
 
+# How many mounting parts a sight is worth. Two adapters to reach a scope is a mount;
+# four is a tower, and the ergonomics score rewards building one because plates read
+# positive. Past this the best sight reachable within the cap wins instead.
+MAX_MOUNTS = 3      # mounting parts allowed between gun and sight
+LOOKAHEAD  = 4      # how far to search for a sight when judging a route
+
+NOT_MOUNTING = ("Silencer", "Barrel", "Receiver", "Handguard", "GasBlock", "Stock",
+                "PistolGrip", "Magazine", "Foregrip", "Bipod", "Flashlight", "TacticalCombo")
+
+def is_mounting_part(tpl):
+    c = categories(tpl)
+    if any(x in c for x in NOT_MOUNTING) or is_optic(tpl):
+        return False
+    return "Mount" in c or "MountsAndAdapters" in c
+
+_reach = {}
+_inflight = set()
+def optic_reach(tpl, policy, _depth=0):
+    """(best sight rank reachable from here, how many parts it takes). None if no sight at all.
+
+    Both halves matter, and in that order. Judging only by distance made "shortest" beat "better
+    sight": the VSK-94 took a red dot that bolted straight on, over the 1-4x scope two plates away,
+    on a 9x39 marksman rifle. Judging only by rank is what built the four-plate tower in the first
+    place. Rank decides, distance breaks the tie.
+
+    Ignores what is already fitted so it can be cached - a route blocked by a conflict is filtered
+    out by pick() before this matters.
+    """
+    if is_optic(tpl):
+        return (optic_rank(tpl, policy), 0)
+    if _depth >= LOOKAHEAD:
+        return None
+    key = (tpl, policy, _depth)
+    if key in _reach:
+        return _reach[key]
+    if key in _inflight:
+        # A cycle. Return unreachable for THIS branch without caching it - writing None into
+        # the memo here poisoned every caller above, and rifles lost 58 magnified optics to it.
+        return None
+    _inflight.add(key)
+    best = None
+    for s in (db.get(tpl, {}).get("_props") or {}).get("Slots", []) or []:
+        n = s.get("_name") or ""
+        if not n.startswith(("mod_scope", "mod_sight", "mod_mount")):
+            continue
+        f = (s.get("_props") or {}).get("filters", [{}])[0]
+        for c in (f.get("Filter") or []):
+            r = optic_reach(c, policy, _depth + 1)
+            if r is None:
+                continue
+            cand = (r[0], r[1] + 1)
+            if best is None or cand < best:
+                best = cand
+    _inflight.discard(key)
+    _reach[key] = best
+    return best
+
 def can_carry_optic(tpl, placed, policy):
     """Does this mount lead to a sight we actually want? A variable scope needs 30mm rings that
     score worse on ergonomics than a bare red dot, so without this the greedy takes the dot and
@@ -292,7 +349,7 @@ def suppressor_friendly(tpl, placed):
                 return True
     return False
 
-def narrow(cands, slot_name, placed):
+def narrow(cands, slot_name, placed, chain=()):
     """Two things the ergonomics/recoil score cannot express on its own.
 
     One optic per gun. The receiver, the handguard and a side mount each offer a scope slot, and
@@ -355,18 +412,51 @@ def narrow(cands, slot_name, placed):
     # Drop the optics we do not want but KEEP everything else in the slot. Most scope slots offer
     # mounts alongside optics, and the mount is often how the optic attaches at all - filtering the
     # slot down to optics broke that path, so this only ever narrows which *optic* can win.
+    # Stop the tower. Mount plates read positive on ergonomics, so each step was happy to add
+    # one more; the optic block below never saw these slots because they offer no optic of their
+    # own. Once MAX_MOUNTS plates are under the sight, only a sight itself may go on.
+    if OPT["short-mounts"] and (slot_name or "").startswith(("mod_scope", "mod_sight", "mod_mount")):
+        if sum(1 for t in chain if is_mounting_part(t)) >= MAX_MOUNTS:
+            sights = [c for c in cands if is_optic(c)]
+            if not sights:
+                return []
+            cands = sights
+
     optics = [c for c in cands if is_optic(c)] if OPT["optic-policy"] else []
     if optics:
         for tier in optic_tiers(optics, POLICY):
             if tier:
                 keep = set(tier)
-                # Keep the wanted optics, and keep any mount that can carry one. Dropping mounts
-                # outright breaks the only path to a scope on some guns; keeping every mount lets
-                # the ergonomics score pick a bare rail over the sight we asked for.
-                cands = [c for c in cands
-                         if (is_optic(c) and c in keep)
-                         or (not is_optic(c) and can_carry_optic(c, placed, POLICY))]
-                if not cands:
+                if not OPT["short-mounts"]:
+                    cands = [c for c in cands
+                             if (is_optic(c) and c in keep)
+                             or (not is_optic(c) and can_carry_optic(c, placed, POLICY))]
+                    if not cands:
+                        cands = tier
+                    break
+
+                # Weigh what a route reaches against what it costs to get there. Every candidate
+                # is scored (best sight rank reachable, parts needed) and only the best survive -
+                # so a scope two plates away beats a red dot that bolts straight on, and a dot
+                # that bolts straight on beats the same dot up a tower of adapters.
+                # Count what is already holding this sight up. optic_reach only says how far a
+                # route *could* reach; it cannot see the plates already fitted, so without this
+                # every step happily added one more and the tower came back.
+                fitted = sum(1 for t in chain if is_mounting_part(t))
+                scored = []
+                for c in cands:
+                    if is_optic(c):
+                        r = (optic_rank(c, POLICY), 0)
+                    elif fitted >= MAX_MOUNTS:
+                        r = None        # enough plates already
+                    else:
+                        r = optic_reach(c, POLICY)
+                    if r is not None:
+                        scored.append((r, c))
+                if scored:
+                    best = min(r for r, _ in scored)
+                    cands = [c for r, c in scored if r == best]
+                else:
                     cands = tier
                 break
     return cands
@@ -479,7 +569,7 @@ def grow(tpl, parent_id, slot_name, depth, chain, placed, w, out):
             continue
         if forced and RECORDING:
             FORCED.append(f"{name(tpl)}.{s['_name']}")
-        cands = narrow(cands, s["_name"], placed)
+        cands = narrow(cands, s["_name"], placed, chain + (tpl,))
         if not cands:
             continue          # narrow() can empty a slot on purpose - a second optic mount
         best = max(cands, key=lambda c: score(c, s["_name"], w))
