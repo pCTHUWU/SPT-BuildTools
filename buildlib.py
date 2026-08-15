@@ -223,27 +223,32 @@ def weapon_is_auto(tpl):
     return bool(set(db[tpl]["_props"].get("weapFireType") or []) & {"fullauto", "burst"})
 
 def dominates(a, b):
-    """Three axes: ergonomics up, accuracy up, vertical recoil down. `a` dominates `b` if it is no
-    worse on any of them and better on at least one."""
-    return all(x >= y for x, y in zip(a[:2], b[:2])) and a[2] <= b[2] \
-        and (a[0] > b[0] or a[1] > b[1] or a[2] < b[2])
+    """`a` dominates `b` if it is no worse on any axis and better on at least one.
+
+    **Every axis is "higher is better".** Callers negate anything they want minimised. This used to
+    hardcode "first two up, third down", which silently mismeasured any caller with a different
+    shape: the equipment generator passes four already-negated axes, so the third (negative weight)
+    was being treated as minimise-me and the knee preferred *heavier* loadouts, while the fourth
+    was ignored entirely. One convention, applied to any number of axes, cannot drift like that.
+    """
+    return all(x >= y for x, y in zip(a, b)) and any(x > y for x, y in zip(a, b))
 
 def pareto_front(points):
     return [p for i, p in enumerate(points)
             if not any(dominates(q[0], p[0]) for j, q in enumerate(points) if j != i)]
 
 def _knee(pool):
-    """The point closest to the ideal corner once each axis is normalised over the pool."""
-    es = [p[0][0] for p in pool]
-    ac = [p[0][1] for p in pool]
-    rc = [p[0][2] for p in pool]
+    """The point closest to the ideal corner once each axis is normalised over the pool.
 
-    def norm(v, lo, hi, invert=False):
-        if hi == lo:
-            return 1.0
-        t = (v - lo) / (hi - lo)
-        return 1 - t if invert else t
+    Same convention as dominates(): every axis is higher-is-better, and it works for any number of
+    them. The previous version read exactly three and inverted the third by name, which is how the
+    equipment generator ended up chasing weight.
+    """
+    n = len(pool[0][0])
+    cols = [[p[0][i] for p in pool] for i in range(n)]
 
-    return max(pool, key=lambda p: norm(p[0][0], min(es), max(es))
-                                 + norm(p[0][1], min(ac), max(ac))
-                                 + norm(p[0][2], min(rc), max(rc), invert=True))
+    def norm(v, lo, hi):
+        return 1.0 if hi == lo else (v - lo) / (hi - lo)
+
+    return max(pool, key=lambda p: sum(norm(p[0][i], min(cols[i]), max(cols[i]))
+                                       for i in range(n)))

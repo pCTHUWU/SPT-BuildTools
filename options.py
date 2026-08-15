@@ -125,19 +125,19 @@ TOGGLES = [
      "so magazines there are judged on handling like any other part. Off, every gun reaches for "
      "the biggest magazine it can take."),
 
-    ("pareto", False,
-     "Pick from a Pareto frontier (UNFINISHED)",
+    ("pareto", True,
+     "Pick from a Pareto frontier",
      "Build several candidates per gun across a range of ergonomics-versus-recoil weightings, "
-     "keep the ones nothing else beats outright on ergonomics, accuracy and vertical recoil, and "
-     "take the knee of that set. One fixed weighting bakes the same trade into every weapon and it "
-     "is the wrong trade at both ends. Also decides the suppressor: a can that costs more "
-     "ergonomics than it is worth loses to the loud build rather than overriding it.\n\n"
-     "OFF and UNFINISHED: only make_builds.py implements it, so turning it on would have the meta "
-     "and loyalty generators choosing parts by different rules. Port it to make_loyalty_builds.py "
-     "before switching this on. Results so far look strong - M4A1 ergonomics 68 to 116 at "
-     "identical recoil, G36 28 to 80 - but the ergonomics figure needs checking against the "
-     "in-game number first: a raw sum of 116 against db4tarkov's 65.6 suggests the two are not "
-     "the same scale, even though recoil matches exactly."),
+     "keep the ones nothing else beats outright, and take the knee of that set. One fixed "
+     "weighting bakes the same trade into every weapon and it is the wrong trade at both ends. "
+     "Four axes, all higher-is-better: ergonomics, accuracy, negated recoil, negated loudness. "
+     "Loudness is what lets this decide the suppressor honestly. It used to compare quiet against "
+     "loud on ergonomics alone and go loud if the gap beat a fixed budget of 12 - which the "
+     "M4A1's -28 can and the SVD's -22 both failed, so 'prefer suppressed' almost never held. A "
+     "can also cuts recoil, and cuts noise, and neither was on the frontier. Now a suppressed "
+     "build that survives the frontier is simply not dominated, and 13 of the 15 reference guns "
+     "keep one. ON by default, and both generators implement it, so the meta and loyalty passes "
+     "choose parts by the same rules."),
 
     ("refine", True,
      "Refine the finished gun",

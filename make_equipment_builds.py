@@ -303,7 +303,11 @@ def make(level):
         items, placed = [], set()
         fill(INVENTORY, None, None, 0, placed, w, level, items, top=True)
         a, s, big, wt, pen = kit_stats(items)
-        variants.append(((a, useful_space(s, big), -wt, -pen), (items, w)))
+        # Weight and penalty are one axis, not two. As separate axes they both push the same way,
+        # so mobility counted double against protection and the knee picked a class 2 loadout at
+        # loyalty 2. They are the same currency to the player - the comment on WEIGHT_SWEEP said so
+        # already - and the score() term combines them the same way.
+        variants.append(((a, useful_space(s, big), -(wt + pen / 10.0)), (items, w)))
     front = pareto_front(variants) or variants
     return _knee(front)[1][0]
 

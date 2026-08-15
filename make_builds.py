@@ -97,9 +97,21 @@ def is_auto():
     """
     return AUTO
 
+# How much a decibel of suppression is worth against a point of ergonomics. Loudness runs 0 to -39
+# and is the whole reason a suppressor is fitted, but it was not in the objective at all - so among
+# cans the score picked whichever was lightest on ergonomics, not whichever was quietest. The AS VAL
+# integral at -39 Loudness for -5 ergonomics lost to cans that barely muffle anything.
+QUIET_WEIGHT = 0.5
+
 def score(tpl, slot="", w=(1.0, 1.0)):
     p = db[tpl]["_props"]
     we, wr = w
+    if is_suppressor(tpl):
+        # Loudness is stored negative, so negating it makes quiet a positive. Recoil and ergonomics
+        # still count through the usual terms below - a can that also steadies the weapon is
+        # already rewarded for it.
+        return (we * (p.get("Ergonomics", 0) or 0) + wr * (-(p.get("Recoil", 0) or 0))
+                + QUIET_WEIGHT * -(p.get("Loudness", 0) or 0))
     if slot == "mod_magazine":
         # Capacity is only worth chasing where the magazine actually empties. On a bolt-action or
         # a semi-auto the extra rounds buy little and cost ergonomics and length, so those score
@@ -123,6 +135,12 @@ def build_stats(items):
         acc += mp.get("Accuracy", 0) or 0
     mult = 1 + pct / 100.0
     return ergo, (p.get("RecoilForceUp", 0) or 0) * mult, (p.get("RecoilForceBack", 0) or 0) * mult, pct, acc
+
+def build_loudness(items):
+    """Total suppression, negative for quieter. Not part of build_stats because it is not a
+    handling stat - it is the reason a suppressor is fitted at all, and the frontier was blind to
+    it, so a quiet build could only ever lose."""
+    return sum(db[i["_tpl"]]["_props"].get("Loudness", 0) or 0 for i in items[1:])
 
 def objective(items, w):
     ergo, _up, _back, pct, _acc = build_stats(items)
@@ -576,10 +594,6 @@ def refine(items, w, rounds=3, breadth=6):
 # wrong trade at both ends. Build several and keep the ones nothing else beats outright.
 WEIGHT_SWEEP = [(1.0, 2.0), (1.4, 1.4), (1.8, 0.8)]
 
-# Ergonomics worth giving up to be quiet. The SVD's rotor43 costs 22 and buys no recoil, which is
-# not a trade worth forcing; a typical AR can costs 5-13 and is.
-SUPPRESSOR_ERGO_BUDGET = 12
-
 
 def make(weapon_tpl):
     global POLICY, AUTO
@@ -601,22 +615,28 @@ def make(weapon_tpl):
             grow(weapon_tpl, None, None, 0, (), placed, w, items)
             items = prune_empty(refine(items, w))
             ergo, up, _back, _pct, acc = build_stats(items)
-            variants.append(((ergo, acc, up), (items, w, suppressed)))
+            variants.append(((ergo, acc, -up, -build_loudness(items)), (items, w, suppressed)))
     OPT["suppressor"] = wanted_suppressed
 
     front = pareto_front(variants) or variants
 
-    # Suppressed by preference, but only while it stays affordable. This is what "if the ergo loss
-    # is not worth it, it should not override" means in numbers: take the quiet build unless going
-    # loud buys back more than the budget.
+    # Suppressed by preference, decided by the frontier rather than a fixed ergonomics budget.
+    #
+    # The old rule compared best-quiet against best-loud on *ergonomics alone* and went loud if the
+    # gap beat SUPPRESSOR_ERGO_BUDGET = 12. That judged a three-way trade on one axis: a suppressor
+    # also cuts recoil (every one in this database does, -7 to -15) and cuts noise, which is the
+    # entire reason to fit one. At a budget of 12 the M4A1's -28 can and the SVD's -22 both lost,
+    # i.e. "prefer suppressed" almost never held.
+    #
+    # The frontier already answers this properly: it has removed everything beaten outright on
+    # ergonomics, accuracy *and* recoil together. So a suppressed build that survives is not
+    # dominated, and the stated preference stands. If every quiet candidate is dominated, none
+    # survive and the loud build wins on merit rather than on a threshold.
     pool = front
     if wanted_suppressed:
         quiet = [p for p in front if p[1][2]]
-        loud = [p for p in front if not p[1][2]]
         if quiet:
-            best_quiet = max(q[0][0] for q in quiet)
-            best_loud = max((l[0][0] for l in loud), default=best_quiet)
-            pool = quiet if best_loud - best_quiet <= SUPPRESSOR_ERGO_BUDGET else loud
+            pool = quiet
 
     chosen = _knee(pool)
     return chosen[1][0], chosen[1][1]

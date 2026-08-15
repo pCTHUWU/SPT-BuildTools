@@ -52,9 +52,16 @@ def is_auto():
     their magazines away."""
     return AUTO
 
+# See make_builds.py. Loudness is the whole reason a suppressor is fitted and was scored nowhere,
+# so among cans the pick went to whichever cost least ergonomics rather than whichever was quietest.
+QUIET_WEIGHT = 0.5
+
 def score(tpl, slot="", w=(1.0, 1.0)):
     p = db[tpl]["_props"]
     we, wr = w
+    if is_suppressor(tpl):
+        return (we * (p.get("Ergonomics", 0) or 0) + wr * (-(p.get("Recoil", 0) or 0))
+                + QUIET_WEIGHT * -(p.get("Loudness", 0) or 0))
     if slot == "mod_magazine":
         # Capacity is only worth chasing where the magazine actually empties - see make_builds.py.
         if not OPT["mag-capacity"] or is_auto():
@@ -75,6 +82,12 @@ def build_stats(items):
         acc += mp.get("Accuracy", 0) or 0
     mult = 1 + pct / 100.0
     return ergo, (p.get("RecoilForceUp", 0) or 0) * mult, (p.get("RecoilForceBack", 0) or 0) * mult, pct, acc
+
+def build_loudness(items):
+    """Total suppression, negative for quieter. Not part of build_stats because it is not a
+    handling stat - it is the reason a suppressor is fitted at all, and the frontier was blind to
+    it, so a quiet build could only ever lose."""
+    return sum(db[i["_tpl"]]["_props"].get("Loudness", 0) or 0 for i in items[1:])
 
 def objective(items, w):
     ergo, _u, _b, pct, _acc = build_stats(items)
@@ -479,10 +492,6 @@ def refine(items, w, level, rounds=3, breadth=6):
 
 WEIGHT_SWEEP = [(1.0, 2.0), (1.4, 1.4), (1.8, 0.8)]
 
-# Ergonomics worth giving up to be quiet. The SVD's rotor43 costs 22 and buys no recoil, which is
-# not a trade worth forcing; a typical AR can costs 5-13 and is.
-SUPPRESSOR_ERGO_BUDGET = 12
-
 
 def _one(weapon, level, w):
     items, placed = [], set()
@@ -504,21 +513,19 @@ def make(weapon, level):
             for w in WEIGHT_SWEEP:
                 cand = _one(weapon, level, w)
                 ergo, up, _back, _pct, acc = build_stats(cand)
-                variants.append(((ergo, acc, up), (cand, w, suppressed)))
+                variants.append(((ergo, acc, -up, -build_loudness(cand)), (cand, w, suppressed)))
         OPT["suppressor"] = wanted_suppressed
 
         front = pareto_front(variants) or variants
 
-        # Suppressed by preference, but only while it stays affordable: take the quiet build unless
-        # going loud buys back more than the budget.
+        # See make_builds.py: the frontier decides, not a fixed ergonomics budget. A suppressed
+        # build that survives it is not dominated on ergonomics, accuracy and recoil together, so
+        # the stated preference for quiet stands.
         pool = front
         if wanted_suppressed:
             quiet = [p for p in front if p[1][2]]
-            loud = [p for p in front if not p[1][2]]
             if quiet:
-                best_quiet = max(q[0][0] for q in quiet)
-                best_loud = max((l[0][0] for l in loud), default=best_quiet)
-                pool = quiet if best_loud - best_quiet <= SUPPRESSOR_ERGO_BUDGET else loud
+                pool = quiet
 
         items = _knee(pool)[1][0]
 
