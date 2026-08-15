@@ -11,6 +11,7 @@ import json, os, random, sys, collections
 from options import OPT, DB_DIR, resolve_profile
 from buildlib import (OPTIC_CATS, LIGHT_CATS, SHORT_CAL, LONG_CAL, LOOKAHEAD, NOT_MOUNTING, 
     _SLOT_RANK, EARNS_PLACE, _conf, _cat, new_id, name, categories, conflicts, slot_rank, 
+    loyalty, by_trader, STANDING, buyable_now, 
     slot_required, is_optic, is_light, is_combo, is_magazine, is_suppressor, is_mounting_part, 
     is_stock_slot, mag_slots, _mag_footprint, optic_policy, earns_place, prune_empty, 
     short_name, weapon_is_auto, dominates, pareto_front, _knee, db, loc)
@@ -20,36 +21,6 @@ PROF = resolve_profile()
 M4A1 = "5447a9cd4bdc2dbd208b4567"
 TAG  = "(LL)"
 WEAPON_BASE = "5422acb9af1c889c16000029"
-
-
-loyalty = {}
-by_trader = collections.defaultdict(dict)
-for t in os.listdir(f"{ROOT}/traders"):
-    p = f"{ROOT}/traders/{t}/assort.json"
-    if not os.path.exists(p):
-        continue
-    a = json.load(open(p, encoding="utf-8"))
-    ll = a["loyal_level_items"]
-    for it in a["items"]:
-        if it.get("parentId") != "hideout":
-            continue
-        lvl = ll.get(it["_id"])
-        if lvl is None:
-            continue
-        tpl = it["_tpl"]
-        if tpl not in loyalty or lvl < loyalty[tpl]:
-            loyalty[tpl] = lvl
-        cur = by_trader[tpl].get(t)
-        if cur is None or lvl < cur:
-            by_trader[tpl][t] = lvl
-
-_prof = json.load(open(PROF, encoding="utf-8"))
-STANDING = {tid: (i.get("loyaltyLevel") or 0)
-            for tid, i in _prof["characters"]["pmc"]["TradersInfo"].items()
-            if i.get("unlocked")}
-
-def buyable_now(tpl):
-    return any(STANDING.get(t, 0) >= lvl for t, lvl in by_trader.get(tpl, {}).items())
 
 
 def is_weapon(tpl):
@@ -135,8 +106,6 @@ def compatible(tpl, placed):
     return not any(tpl in conflicts(p) for p in placed)
 
 FORCED = []
-
-
 
 
 _zoom = {}

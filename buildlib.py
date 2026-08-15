@@ -10,11 +10,44 @@ and friends. Those differ because the loyalty generator threads a trader level t
 Unifying those is a separate job with real regression risk; this module is the part that carries
 none.
 """
-import json, random
-from options import OPT, ITEMS, LOCALE
+import collections, json, os, random
+from options import OPT, ITEMS, LOCALE, DB_DIR, resolve_profile
 
 db  = json.load(open(ITEMS,  encoding="utf-8"))
 loc = json.load(open(LOCALE, encoding="utf-8"))
+
+# ---- trader availability. Which loyalty level each item first appears at, and what the player can
+# actually buy right now at their own standing. Shared so every generator answers this the same way.
+
+loyalty = {}                                   # tpl -> lowest loyalty level any trader sells it at
+by_trader = collections.defaultdict(dict)      # tpl -> {trader: level}
+for _t in os.listdir(f"{DB_DIR}/traders"):
+    _p = f"{DB_DIR}/traders/{_t}/assort.json"
+    if not os.path.exists(_p):
+        continue
+    _a = json.load(open(_p, encoding="utf-8"))
+    _ll = _a["loyal_level_items"]
+    for _it in _a["items"]:
+        if _it.get("parentId") != "hideout":   # only top-level offers are purchasable
+            continue
+        _lvl = _ll.get(_it["_id"])
+        if _lvl is None:
+            continue
+        _tpl = _it["_tpl"]
+        if _tpl not in loyalty or _lvl < loyalty[_tpl]:
+            loyalty[_tpl] = _lvl
+        _cur = by_trader[_tpl].get(_t)
+        if _cur is None or _lvl < _cur:
+            by_trader[_tpl][_t] = _lvl
+
+_prof = json.load(open(resolve_profile(), encoding="utf-8"))
+STANDING = {tid: (i.get("loyaltyLevel") or 0)
+            for tid, i in _prof["characters"]["pmc"]["TradersInfo"].items()
+            if i.get("unlocked")}
+
+def buyable_now(tpl):
+    """Can the player buy this at their current standing, from any unlocked trader?"""
+    return any(STANDING.get(t, 0) >= lvl for t, lvl in by_trader.get(tpl, {}).items())
 
 OPTIC_CATS = ("Collimator", "CompactCollimator", "OpticScope", "AssaultScope", "SpecialScope")
 
