@@ -1,4 +1,6 @@
-﻿bin/
+bin/
 obj/
 __pycache__/
 *.json
+plugin/bin/
+plugin/obj/

@@ -1,0 +1,112 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net472</TargetFramework>
+        <OutputType>Library</OutputType>
+        <RootNamespace>BuildScreenFilter</RootNamespace>
+        <AssemblyName>BuildScreenFilter</AssemblyName>
+        <Version>1.0.0</Version>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <NoWarn>$(NoWarn);CS0618;CS0649;CS8600;CS8601;CS8602;CS8604;CS8618;CS8620;CS8625</NoWarn>
+        <Deterministic>true</Deterministic>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Reference Include="0Harmony">
+            <HintPath>C:\SPT\BepInEx\core\0Harmony.dll</HintPath>
+        </Reference>
+        <Reference Include="Assembly-CSharp">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\Assembly-CSharp.dll</HintPath>
+        </Reference>
+        <Reference Include="BepInEx">
+            <HintPath>C:\SPT\BepInEx\core\BepInEx.dll</HintPath>
+        </Reference>
+        <Reference Include="Comfort">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\Comfort.dll</HintPath>
+        </Reference>
+        <Reference Include="Comfort.Unity">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\Comfort.Unity.dll</HintPath>
+        </Reference>
+        <Reference Include="ItemComponent.Types">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\ItemComponent.Types.dll</HintPath>
+        </Reference>
+        <Reference Include="Newtonsoft.Json">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\Newtonsoft.Json.dll</HintPath>
+        </Reference>
+        <Reference Include="spt-common">
+            <HintPath>C:\SPT\BepInEx\plugins\spt\spt-common.dll</HintPath>
+        </Reference>
+        <Reference Include="spt-reflection">
+            <HintPath>C:\SPT\BepInEx\plugins\spt\spt-reflection.dll</HintPath>
+        </Reference>
+        <Reference Include="Sirenix.Serialization">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\Sirenix.Serialization.dll</HintPath>
+        </Reference>
+        <Reference Include="Unity.TextMeshPro">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\Unity.TextMeshPro.dll</HintPath>
+        </Reference>
+        <Reference Include="UnityEngine">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.dll</HintPath>
+        </Reference>
+        <Reference Include="UnityEngine.CoreModule">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+        </Reference>
+        <Reference Include="UnityEngine.InputLegacyModule">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+        </Reference>
+        <Reference Include="UnityEngine.UI">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.UI.dll</HintPath>
+        </Reference>
+        <Reference Include="UnityEngine.UIModule">
+            <HintPath>C:\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.UIModule.dll</HintPath>
+        </Reference>
+        <Reference Include="System" />
+        <Reference Include="System.Core" />
+    </ItemGroup>
+
+    <!-- Deploys straight into the live SPT install. This mod is self-contained: no server half,
+         no companion build to disable, so a plain copy is the whole install step. -->
+    <Target Name="CopyToPlugins" AfterTargets="PostBuildEvent">
+        <ItemGroup>
+            <OutputDll Include="$(ProjectDir)$(OutDir)$(TargetName).dll" />
+        </ItemGroup>
+        <MakeDir Directories="C:\SPT\BepInEx\plugins\BuildScreenFilter" />
+        <Copy SourceFiles="@(OutputDll)" DestinationFolder="C:\SPT\BepInEx\plugins\BuildScreenFilter" />
+    </Target>
+
+    <!-- Records the commit this DLL came from, so the startup banner can name it. A deployed
+       build is otherwise identifiable only by its file date, which is no help when something
+       goes wrong and the question is which build was actually running. "-dirty" marks a build
+       made from uncommitted tracked changes - the case that most needs saying out loud, since
+       that DLL corresponds to no commit at all.
+
+       Two plain git calls rather than one `git describe`, whose dirty flag needs a tag-exclude
+       glob to stop tags winning, and that glob would be at the mercy of how MSBuild's cmd.exe
+       and git's MSYS layer each handle quoting. Neither call can fail the build: no git, or a
+       fresh clone with no commits, just yields "unknown". -->
+    <Target Name="StampBuild" BeforeTargets="CoreCompile">
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; rev-parse --short=7 HEAD"
+          ConsoleToMSBuild="true" StandardOutputImportance="low"
+          ContinueOnError="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitSha" />
+    </Exec>
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; status --porcelain --untracked-files=no"
+          ConsoleToMSBuild="true" StandardOutputImportance="low"
+          ContinueOnError="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitDirty" />
+    </Exec>
+    <PropertyGroup>
+      <GitSha Condition="'$(GitSha)' == ''">unknown</GitSha>
+      <BuildStampValue>$(GitSha)</BuildStampValue>
+      <BuildStampValue Condition="'$(GitDirty)' != ''">$(GitSha)-dirty</BuildStampValue>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(IntermediateOutputPath)BuildStamp.g.cs"
+                      Lines="// Generated by the StampBuild target. Not source - do not edit or commit.;namespace $(RootNamespace) { internal static class BuildStamp { public const string Value = &quot;$(BuildStampValue)&quot;%3B } }"
+                      Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)BuildStamp.g.cs" />
+    </ItemGroup>
+    </Target>
+
+</Project>

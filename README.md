@@ -66,6 +66,22 @@ Everything defaults on. Flags follow the same names: `--no-suppressor`, `--no-re
 Both generators preview unless given `--write`, and replace only builds carrying their own tag, so
 running one does not disturb the other's.
 
+## The client plugin
+
+`plugin/BuildScreenFilter.cs` is a small BepInEx plugin that belongs with these tools rather than
+apart from them. The generators reach for the best part available, and plenty of those parts no
+trader carries — so on the stock buy-parts screen they read **NOT AVAILABLE** with a blank price
+and a perfectly good build looks broken.
+
+That is vanilla BSG behaviour, not a mod conflict: `RagFair._weaponBuildsFilterRule` hardcodes
+`OfferOwnerType = 1` (Traders) for the build view, while the ordinary flea uses 0 (Any). A postfix
+on `GetPreferredRule` widens it back. It applies to equipment builds too, which is how it was
+found.
+
+Build it with `dotnet build plugin/BuildScreenFilter.csproj -c Release`; it copies itself into
+`BepInEx/plugins/BuildScreenFilter`. Reference paths point at `C:\SPT` and are the one thing to
+edit if your install is elsewhere.
+
 ## Paths
 
 Defaults to `C:\SPT\SPT_Runtime` and the only profile in `user\profiles`. Override with:
