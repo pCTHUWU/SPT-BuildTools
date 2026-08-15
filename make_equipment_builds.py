@@ -27,6 +27,15 @@ TAG = "(kit)"
 WORN = ["Headwear", "Earpiece", "FaceCover", "Eyewear", "ArmorVest", "TacticalVest",
         "Backpack", "SecuredContainer", "Scabbard"]
 
+# Necessary gear: filled whatever it scores. A headset protects nothing and carries nothing, so on
+# the four axes it reads as pure weight and the generator dropped it from every loadout - the same
+# shape as the bare plate carrier scoring negative. Hearing is not on the axes and cannot easily be:
+# the audio fields are near-uniform across all 15 headsets (AmbientVolume -50, DryVolume -60 on
+# every one), and the real differences are compressor and EQ curves that do not reduce to a number.
+# So it is required rather than scored, and chosen on weight among what the tier can buy.
+# ArmorVest is in the list but still yields to an armoured rig - the plates are then in the rig.
+ESSENTIAL = {"Earpiece", "Headwear", "TacticalVest", "Backpack", "ArmorVest"}
+
 # Weightings swept over (protection, storage, mobility). Mobility covers weight and the movement,
 # turn and ergonomics penalties together - they are the same currency to the player.
 WEIGHT_SWEEP = [(2.0, 0.5, 1.0),    # armoured push
@@ -117,6 +126,20 @@ def penalty(tpl):
 def armor(tpl):
     return num(db[tpl]["_props"].get("armorClass"))
 
+# Armour slots are zones. What class you are "rated at" is what covers the vitals; a groin insert
+# matters, but it is not what stops the round through your chest. Coverage of the rest is reported
+# separately rather than folded into the class, so neither hides the other.
+VITAL = {"Front_plate", "Back_plate", "Soft_armor_front", "Soft_armor_back", "Helmet_top"}
+
+def rated_class(items):
+    """Highest class over the vital zones, falling back to the best worn if none are filled."""
+    vit = [armor(i["_tpl"]) for i in items[1:] if i.get("slotId") in VITAL]
+    return max(vit) if vit else max((armor(i["_tpl"]) for i in items[1:]), default=0)
+
+def coverage(items):
+    """How many armour zones are covered at all - the breadth the class number cannot show."""
+    return sum(1 for i in items[1:] if armor(i["_tpl"]) > 0)
+
 
 def useful_space(cells, big):
     """Cells you can actually use. Half-weighting the largest grid rewards one big pocket over the
@@ -184,12 +207,11 @@ def kit_stats(items):
     penalty axes then push toward the lightest way to reach it, which is how the real meta works
     (a Slick is chosen for costing nothing, and the plates do the protecting).
     """
-    a = s = big = wt = pen = 0
+    s = big = wt = pen = 0
     for i in items[1:]:
-        a = max(a, armor(i["_tpl"])); s += storage(i["_tpl"])
-        big = max(big, biggest(i["_tpl"]))
+        s += storage(i["_tpl"]); big = max(big, biggest(i["_tpl"]))
         wt += weight(i["_tpl"]); pen += penalty(i["_tpl"])
-    return a, s, big, round(wt, 2), round(pen, 1)
+    return rated_class(items), s, big, round(wt, 2), round(pen, 1)
 
 
 def compatible(tpl, placed):
@@ -226,17 +248,20 @@ def fill(tpl, parent_id, slot_name, depth, placed, w, level, out, top=False):
             cands = tier or ([] if not s["_required"] else cands)
         if not cands:
             continue
+        must = s["_required"] or (top and nm in ESSENTIAL)
         # Judge on what the piece is worth once filled, not bare - see reach().
         best = max(cands, key=lambda c: reach(c, w))
-        if not s["_required"] and reach(best, w) <= 0:
+        if not must and reach(best, w) <= 0:
             continue
         # You are rated at the class covering you, so a plate no better than what is already on
         # buys nothing and weighs something. This model has no zone coverage, so it cannot tell a
         # side plate from a redundant front one - it errs toward the lighter kit rather than
         # hanging ten plates on a carrier, which is the failure it replaces.
-        worn = max((armor(i["_tpl"]) for i in out), default=0)
-        if not s["_required"] and armor(best) and armor(best) <= worn and not storage(best):
-            continue
+        # No "skip a plate no better than what is already worn" rule here, though an earlier
+        # version had one. Armour slots are *zones* - Front_plate, Groin, Soft_armor_back,
+        # Helmet_ears - so a class-3 groin insert under a class-5 front plate is not redundant,
+        # it is the only thing covering the groin. That rule denied real coverage. Over-armouring
+        # is held in check by the weight and penalty axes instead, which is where it belongs.
         fill(best, node["_id"], nm, depth + 1, placed, w, level, out)
 
 
@@ -253,7 +278,7 @@ def make(level):
 
 def label(items):
     a, s, big, wt, pen = kit_stats(items)
-    return (f"armor {a:>3}  cells {s:>3} (largest {big:>2})  "
+    return (f"class {a:>3.0f}  zones {coverage(items):>2}  cells {s:>3.0f} (largest {big:>2.0f})  "
             f"weight {wt:>6.2f}kg  penalty {pen:>5.1f}")
 
 
