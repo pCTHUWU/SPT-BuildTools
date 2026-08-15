@@ -99,15 +99,17 @@ def build_stats(items):
     p = db[items[0]["_tpl"]]["_props"]
     ergo = p.get("Ergonomics", 0) or 0
     pct = 0.0
+    acc = 0.0
     for n in items[1:]:
         mp = db[n["_tpl"]]["_props"]
         ergo += mp.get("Ergonomics", 0) or 0
         pct += mp.get("Recoil", 0) or 0
+        acc += mp.get("Accuracy", 0) or 0
     mult = 1 + pct / 100.0
-    return ergo, (p.get("RecoilForceUp", 0) or 0) * mult, (p.get("RecoilForceBack", 0) or 0) * mult, pct
+    return ergo, (p.get("RecoilForceUp", 0) or 0) * mult, (p.get("RecoilForceBack", 0) or 0) * mult, pct, acc
 
 def objective(items, w):
-    ergo, _u, _b, pct = build_stats(items)
+    ergo, _u, _b, pct, _acc = build_stats(items)
     return w[0] * ergo + w[1] * (-pct)
 
 def usable(tpl):
@@ -338,6 +340,13 @@ def narrow(cands, slot_name, placed, chain=()):
         lights = combos or [c for c in cands if is_light(c)]
         if lights:
             cands = lights
+    elif OPT["light"] and (slot_name or "").startswith("mod_tactical"):
+        # Already lit. A second torch is -2 ergonomics and lights nothing new. Most tactical
+        # slots offer nothing BUT lights, so "use a non-light if one exists" quietly changed
+        # nothing and builds wore up to six - leave the slot empty instead.
+        cands = [c for c in cands if not is_light(c)]
+        if not cands:
+            return []
 
     # See make_builds.py. Capacity scoring always reaches for the biggest magazine, which is
     # usually the one that eats a third rig slot. Give way where a gun has nothing smaller.

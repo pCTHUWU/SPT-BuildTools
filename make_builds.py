@@ -113,15 +113,17 @@ def build_stats(items):
     p = db[items[0]["_tpl"]]["_props"]
     ergo = p.get("Ergonomics", 0) or 0
     pct = 0.0
+    acc = 0.0
     for n in items[1:]:
         mp = db[n["_tpl"]]["_props"]
         ergo += mp.get("Ergonomics", 0) or 0
         pct += mp.get("Recoil", 0) or 0
+        acc += mp.get("Accuracy", 0) or 0
     mult = 1 + pct / 100.0
-    return ergo, (p.get("RecoilForceUp", 0) or 0) * mult, (p.get("RecoilForceBack", 0) or 0) * mult, pct
+    return ergo, (p.get("RecoilForceUp", 0) or 0) * mult, (p.get("RecoilForceBack", 0) or 0) * mult, pct, acc
 
 def objective(items, w):
-    ergo, _up, _back, pct = build_stats(items)
+    ergo, _up, _back, pct, _acc = build_stats(items)
     return w[0] * ergo + w[1] * (-pct)
 
 def usable(tpl):
@@ -380,6 +382,13 @@ def narrow(cands, slot_name, placed, chain=()):
         lights = combos or [c for c in cands if is_light(c)]
         if lights:
             cands = lights
+    elif OPT["light"] and (slot_name or "").startswith("mod_tactical"):
+        # Already lit. A second torch is -2 ergonomics and lights nothing new. Most tactical
+        # slots offer nothing BUT lights, so "use a non-light if one exists" quietly changed
+        # nothing and builds wore up to six - leave the slot empty instead.
+        cands = [c for c in cands if not is_light(c)]
+        if not cands:
+            return []
 
     # Suppressed by preference. Where the muzzle slot takes a silencer directly, use one; where it
     # does not, the best-scoring device often *is* a thread adapter, and this same rule applies
@@ -720,11 +729,11 @@ for want, short in WANTED:
         "Root": items[0]["_id"],
         "Items": items,
     })
-    ergo, up, back, pct = build_stats(items)
+    ergo, up, back, pct, acc = build_stats(items)
     STATS.append((short, ergo, up, pct))
     kind = "auto" if w[1] > w[0] else "semi"
     print(f"  {short:<12} {len(items):>3} parts  {kind}  ergo {ergo:>4.0f}  "
-          f"recoil {up:>5.0f}/{back:>5.0f} ({pct:+.0f}%)   {want}")
+          f"recoil {up:>5.0f}/{back:>5.0f} ({pct:+.0f}%)  acc {acc:+4.0f}   {want}")
 
 if missing:
     print("\nNOT FOUND (name mismatch):")
