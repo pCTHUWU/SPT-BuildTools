@@ -32,6 +32,7 @@ running, and takes a timestamped profile backup first.
 | Toggle | Off means |
 |---|---|
 | Respect part conflicts | Ignore `ConflictingItems`. Produces builds the game refuses to assemble — it is there to show what the rule is worth, not as a normal setting. |
+| Fit underbarrel launchers *(off by default)* | On, a GP-25 or M203 gets hung under anything that takes one. It conflicts with 72 other parts, so 43 of the 57 builds that had one carried no foregrip at all. Weapons that *are* launchers are unaffected. |
 | Only use parts sellable on the flea *(off by default)* | On, every part must be `CanSellOnRagfair`. Availability that matters is the trader level a build describes, and meta builds assume max standing — so this is off. Turn it on only to exercise a flea-buying mod. |
 | Always fit a stock | 55 builds end up with no shoulder stock. |
 | One optic per gun | About a third of builds carry two or more sights. |
@@ -110,6 +111,11 @@ and then scale, so they are not additive with ergonomics and cannot be compared 
 to itself it put a 40-round three-slot PMAG on the M4A1 when a two-slot 60-round magazine was
 available — worse on both counts, but better on ergonomics. `shape_ok` now refuses any swap that
 grows the magazine's footprint, or that shrinks its capacity on an automatic.
+
+**A part that fits is not a part worth fitting.** `mod_launcher` accepts nothing but launchers, so
+the generator dutifully hung a GP-25 under 57 builds. It conflicts with 72 other parts, and 43 of
+those builds ended up with no foregrip. Leaving the slot empty costs nothing and gave 32 builds
+their grip back. Worth asking of any slot: what does filling it actually buy?
 
 **Availability means the trader level, not the flea.** `usable` used to require every part be
 `CanSellOnRagfair`, which silently excluded good kit — the SureFire MAG5-60 and the PMAG D-60 among

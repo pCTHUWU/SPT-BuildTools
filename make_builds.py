@@ -303,6 +303,12 @@ def narrow(cands, slot_name, placed):
     contest on merit and 37% of builds ended up with nothing to see in the dark with. Give the
     first tactical slot to a light, then let the score decide the rest.
     """
+    # An underbarrel launcher is never worth what it costs. mod_launcher accepts nothing but
+    # launchers, so leaving it empty loses nothing - and the GP-25 conflicts with 72 other parts,
+    # which is how 43 builds ended up with no foregrip. A weapon that IS a launcher is untouched;
+    # this only declines to hang one under another gun.
+    if not OPT["launchers"] and (slot_name or "").startswith("mod_launcher"):
+        return []
     if OPT["one-optic"] and any(is_optic(p) for p in placed):
         # Where the slot offers something else, take that. Where every candidate is an optic -
         # a dedicated scope mount - leave it empty. Falling back to "fit one anyway" is what kept

@@ -264,6 +264,12 @@ def narrow(cands, slot_name, placed):
     """See make_builds.py. One optic per gun - receiver, handguard and side mount each offer a
     scope slot and scoring them in isolation fits an optic in all three. And a light scores zero
     on ergonomics and recoil so it loses every contest on merit; give it the first tactical slot."""
+    # An underbarrel launcher is never worth what it costs. mod_launcher accepts nothing but
+    # launchers, so leaving it empty loses nothing - and the GP-25 conflicts with 72 other parts,
+    # which is how 43 builds ended up with no foregrip. A weapon that IS a launcher is untouched;
+    # this only declines to hang one under another gun.
+    if not OPT["launchers"] and (slot_name or "").startswith("mod_launcher"):
+        return []
     if OPT["one-optic"] and any(is_optic(p) for p in placed):
         # Where every candidate is an optic - a dedicated scope mount - leave the slot empty
         # rather than fitting a second sight.

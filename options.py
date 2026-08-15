@@ -76,6 +76,14 @@ TOGGLES = [
      "Give the first tactical slot to a light, preferring an AN/PEQ-style combo over a bare "
      "torch. These score zero on ergonomics and recoil, so without this they always lose."),
 
+    ("launchers", False,
+     "Fit underbarrel launchers",
+     "Off by default. mod_launcher accepts nothing but launchers, so leaving it empty costs "
+     "nothing - and the GP-25 alone conflicts with 72 other parts, which left 43 of the 57 builds "
+     "that had one with no foregrip at all. A grip and a light beat a grenade you carry no rounds "
+     "for. Weapons that ARE launchers are unaffected; this only governs hanging one under "
+     "another gun."),
+
     ("flea-only", False,
      "Only use parts sellable on the flea",
      "Off by default: a part needs to be purchasable at the trader level a build describes, and "
