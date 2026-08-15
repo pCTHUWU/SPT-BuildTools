@@ -72,24 +72,31 @@ def capacity(tpl):
     c = db[tpl]["_props"].get("Cartridges") or []
     return c[0].get("_max_count", 0) if c else 0
 
+AUTO = False   # set per build in make(); the weapon's own fire modes, never the weighting
+
+def weapon_is_auto(tpl):
+    """Does this weapon hold the trigger down? Read from its fire modes, the one source of truth."""
+    return bool(set(db[tpl]["_props"].get("weapFireType") or []) & {"fullauto", "burst"})
+
 def weapon_weights(tpl):
     """See make_builds.py. Ergonomics and recoil are not worth the same on every gun; read the
     fire modes rather than weighting them equally as `Ergonomics - Recoil` did."""
-    fire = set((db[tpl]["_props"].get("weapFireType") or []))
-    if fire & {"fullauto", "burst"}:
+    if weapon_is_auto(tpl):
         return (1.0, 2.0)
     return (1.8, 0.8)
 
-def is_auto(w):
-    """weapon_weights gives (1.0, 2.0) to full-auto and (1.8, 0.8) to everything else."""
-    return w[1] > w[0]
+def is_auto():
+    """See make_builds.py. Never infer this from the weighting: the Pareto sweep feeds weightings
+    weapon_weights never produced, and reading those reclassified automatics as semi-auto and took
+    their magazines away."""
+    return AUTO
 
 def score(tpl, slot="", w=(1.0, 1.0)):
     p = db[tpl]["_props"]
     we, wr = w
     if slot == "mod_magazine":
         # Capacity is only worth chasing where the magazine actually empties - see make_builds.py.
-        if not OPT["mag-capacity"] or is_auto(w):
+        if not OPT["mag-capacity"] or is_auto():
             return capacity(tpl)
     return we * (p.get("Ergonomics", 0) or 0) + wr * (-(p.get("Recoil", 0) or 0))
 
@@ -241,7 +248,7 @@ def optic_tiers(cands, policy):
 # How many mounting parts a sight is worth. Two adapters to reach a scope is a mount;
 # four is a tower, and the ergonomics score rewards building one because plates read
 # positive. Past this the best sight reachable within the cap wins instead.
-MAX_MOUNTS = 3      # mounting parts allowed between gun and sight
+MAX_MOUNTS = 2      # plates allowed between gun and sight; enforced always, not just short-mounts
 LOOKAHEAD  = 4      # how far to search for a sight when judging a route
 
 NOT_MOUNTING = ("Silencer", "Barrel", "Receiver", "Handguard", "GasBlock", "Stock",
@@ -371,7 +378,10 @@ def narrow(cands, slot_name, placed, chain=()):
     # Stop the tower. Mount plates read positive on ergonomics, so each step was happy to add
     # one more; the optic block below never saw these slots because they offer no optic of their
     # own. Once MAX_MOUNTS plates are under the sight, only a sight itself may go on.
-    if OPT["short-mounts"] and (slot_name or "").startswith(("mod_scope", "mod_sight", "mod_mount")):
+    # See make_builds.py: deliberately NOT gated on short-mounts. Behind that flag the cap was dead
+    # code, because the flag is off by default. Capping the stack and choosing the optic are
+    # separate concerns; only the first belongs here.
+    if (slot_name or "").startswith(("mod_scope", "mod_sight", "mod_mount")):
         if sum(1 for t in chain if is_mounting_part(t)) >= MAX_MOUNTS:
             sights = [c for c in cands if is_optic(c)]
             if not sights:
@@ -440,7 +450,7 @@ def shape_ok(its, reference, w=(1.0, 1.0)):
     # objective is blind to both.
     if _mag_footprint(its) > _mag_footprint(reference):
         return False
-    if is_auto(w) and _mag_capacity(its) < _mag_capacity(reference):
+    if is_auto() and _mag_capacity(its) < _mag_capacity(reference):
         return False
     return True
 
@@ -644,13 +654,79 @@ def prune_empty(items):
             return items
         items.remove(drop)
 
-def make(weapon, level):
-    global POLICY
-    POLICY = optic_policy(weapon)
-    w = weapon_weights(weapon)
+# ---- Pareto selection. See make_builds.py for the reasoning; this is the same machinery with the
+# loyalty level threaded through, so both generators pick builds the same way. ----
+
+WEIGHT_SWEEP = [(1.0, 2.0), (1.4, 1.4), (1.8, 0.8)]
+
+# Ergonomics worth giving up to be quiet. The SVD's rotor43 costs 22 and buys no recoil, which is
+# not a trade worth forcing; a typical AR can costs 5-13 and is.
+SUPPRESSOR_ERGO_BUDGET = 12
+
+def dominates(a, b):
+    """Three axes: ergonomics up, accuracy up, vertical recoil down. `a` dominates `b` if it is no
+    worse on any of them and better on at least one."""
+    return all(x >= y for x, y in zip(a[:2], b[:2])) and a[2] <= b[2] \
+        and (a[0] > b[0] or a[1] > b[1] or a[2] < b[2])
+
+def pareto_front(points):
+    return [p for i, p in enumerate(points)
+            if not any(dominates(q[0], p[0]) for j, q in enumerate(points) if j != i)]
+
+def _knee(pool):
+    """The point closest to the ideal corner once each axis is normalised over the pool."""
+    es = [p[0][0] for p in pool]
+    ac = [p[0][1] for p in pool]
+    rc = [p[0][2] for p in pool]
+
+    def norm(v, lo, hi, invert=False):
+        if hi == lo:
+            return 1.0
+        t = (v - lo) / (hi - lo)
+        return 1 - t if invert else t
+
+    return max(pool, key=lambda p: norm(p[0][0], min(es), max(es))
+                                 + norm(p[0][1], min(ac), max(ac))
+                                 + norm(p[0][2], min(rc), max(rc), invert=True))
+
+def _one(weapon, level, w):
     items, placed = [], set()
     grow(weapon, None, None, 0, (), placed, w, level, items)
-    items = prune_empty(refine(items, w, level))
+    return prune_empty(refine(items, w, level))
+
+def make(weapon, level):
+    global POLICY, AUTO
+    POLICY = optic_policy(weapon)
+    AUTO = weapon_is_auto(weapon)
+
+    if not OPT["pareto"]:
+        items = _one(weapon, level, weapon_weights(weapon))
+    else:
+        wanted_suppressed = OPT["suppressor"]
+        variants = []
+        for suppressed in ([True, False] if wanted_suppressed else [False]):
+            OPT["suppressor"] = suppressed          # single-threaded; restored below
+            for w in WEIGHT_SWEEP:
+                cand = _one(weapon, level, w)
+                ergo, up, _back, _pct, acc = build_stats(cand)
+                variants.append(((ergo, acc, up), (cand, w, suppressed)))
+        OPT["suppressor"] = wanted_suppressed
+
+        front = pareto_front(variants) or variants
+
+        # Suppressed by preference, but only while it stays affordable: take the quiet build unless
+        # going loud buys back more than the budget.
+        pool = front
+        if wanted_suppressed:
+            quiet = [p for p in front if p[1][2]]
+            loud = [p for p in front if not p[1][2]]
+            if quiet:
+                best_quiet = max(q[0][0] for q in quiet)
+                best_loud = max((l[0][0] for l in loud), default=best_quiet)
+                pool = quiet if best_loud - best_quiet <= SUPPRESSOR_ERGO_BUDGET else loud
+
+        items = _knee(pool)[1][0]
+
     stats = collections.Counter()
     for n in items[1:]:
         stats["buy_now" if buyable_now(n["_tpl"]) else "needs_flea"] += 1
