@@ -477,13 +477,78 @@ def refine(items, w, level, rounds=3, breadth=6):
         RECORDING = was
     return best
 
+# Categories that do a job the ergonomics/recoil numbers cannot express, so they earn their place
+# even at a cost. Bipods are handled separately - see earns_place.
+EARNS_PLACE = ("Collimator", "CompactCollimator", "OpticScope", "AssaultScope", "SpecialScope",
+               "Flashlight", "TacticalCombo", "Silencer", "Magazine", "Stock", "Foregrip",
+               "IronSight", "Barrel", "Receiver", "Handguard", "GasBlock",
+               "PistolGrip", "ChargingHandle", "Launcher", "GrenadeLauncher")
+
+def earns_place(tpl, weapon_tpl=None):
+    c = categories(tpl)
+    if "Bipod" in c:
+        # A bipod earns its place on a gun fired from a rest - a bolt-action, a marksman rifle,
+        # a machine gun. On an SMG or a carbine it is weight and a worse ergonomics score.
+        if weapon_tpl is None:
+            return True
+        wp = db.get(weapon_tpl, {}).get("_props") or {}
+        fire = set(wp.get("weapFireType") or [])
+        if "MachineGun" in categories(weapon_tpl):
+            return True
+        if (wp.get("ammoCaliber") or "") in LONG_CAL:
+            return True
+        return not (fire & {"fullauto", "burst"})
+    return any(x in c for x in EARNS_PLACE)
+
+def slot_required(parent_tpl, slot_name):
+    for s in (db.get(parent_tpl, {}).get("_props") or {}).get("Slots", []) or []:
+        if s.get("_name") == slot_name:
+            return bool(s.get("_required"))
+    return False
+
+def prune_empty(items):
+    """Drop parts that ended up carrying nothing and giving nothing.
+
+    Filling is depth-first, so whether a rail earns its place is not knowable until its children
+    have been tried - and 413 of them ended up holding air, an Aimpoint spacer with no Aimpoint on
+    it 258 times over. This is the same habit that hung a grenade launcher under 57 builds: a slot
+    that can be filled is not a slot worth filling.
+
+    Runs to a fixed point, because removing a leaf can leave its parent holding nothing in turn.
+    Required slots, and anything with a real job, are left alone.
+    """
+    if not OPT["prune-empty"]:
+        return items
+    weapon_tpl = items[0]["_tpl"] if items else None
+    while True:
+        kids = set(i.get("parentId") for i in items if i.get("parentId"))
+        by_id = {i["_id"]: i for i in items}
+        drop = None
+        for i in items:
+            if not i.get("parentId") or i["_id"] in kids:
+                continue
+            tpl = i["_tpl"]
+            if earns_place(tpl, weapon_tpl):
+                continue
+            p = db.get(tpl, {}).get("_props") or {}
+            if (p.get("Ergonomics", 0) or 0) > 0 or (p.get("Recoil", 0) or 0) < 0:
+                continue          # pays for itself on one axis or the other
+            parent = by_id.get(i["parentId"])
+            if parent and slot_required(parent["_tpl"], i.get("slotId")):
+                continue
+            drop = i
+            break
+        if drop is None:
+            return items
+        items.remove(drop)
+
 def make(weapon, level):
     global POLICY
     POLICY = optic_policy(weapon)
     w = weapon_weights(weapon)
     items, placed = [], set()
     grow(weapon, None, None, 0, (), placed, w, level, items)
-    items = refine(items, w, level)
+    items = prune_empty(refine(items, w, level))
     stats = collections.Counter()
     for n in items[1:]:
         stats["buy_now" if buyable_now(n["_tpl"]) else "needs_flea"] += 1

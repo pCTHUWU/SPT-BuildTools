@@ -32,6 +32,7 @@ running, and takes a timestamped profile backup first.
 | Toggle | Off means |
 |---|---|
 | Respect part conflicts | Ignore `ConflictingItems`. Produces builds the game refuses to assemble — it is there to show what the rule is worth, not as a normal setting. |
+| Drop parts that earn nothing | Off, 413 mounts and rails stay fitted while carrying nothing and giving nothing — an Aimpoint spacer with no Aimpoint on it, 258 times. Bipods are kept on bolt-actions, marksman rifles and machine guns, and dropped from anything else. |
 | Fit underbarrel launchers *(off by default)* | On, a GP-25 or M203 gets hung under anything that takes one. It conflicts with 72 other parts, so 43 of the 57 builds that had one carried no foregrip at all. Weapons that *are* launchers are unaffected. |
 | Only use parts sellable on the flea *(off by default)* | On, every part must be `CanSellOnRagfair`. Availability that matters is the trader level a build describes, and meta builds assume max standing — so this is off. Turn it on only to exercise a flea-buying mod. |
 | Always fit a stock | 55 builds end up with no shoulder stock. |
@@ -55,6 +56,8 @@ Everything defaults on. Flags follow the same names: `--no-suppressor`, `--no-re
 | `stock_real.py` | Builds left without a shoulder stock. Should report zero. |
 | `sights_lights.py` | Sights and light sources per build. |
 | `prefs_audit.py` | Whether the preferences actually landed. |
+| `slot_audit.py` | Slots filled for no gain - empty mounts, dead weight, hopeless slots. |
+| `probe_launchers.py` | Where launchers get fitted and what they displace. |
 | `compare_stats.py <old> <new>` | Finished-weapon ergonomics and recoil between two profile snapshots. |
 | `inspect_build.py "<name>"` | One build as a tree, with its conflicts explained. |
 
@@ -112,7 +115,12 @@ to itself it put a 40-round three-slot PMAG on the M4A1 when a two-slot 60-round
 available — worse on both counts, but better on ergonomics. `shape_ok` now refuses any swap that
 grows the magazine's footprint, or that shrinks its capacity on an automatic.
 
-**A part that fits is not a part worth fitting.** `mod_launcher` accepts nothing but launchers, so
+**A part that fits is not a part worth fitting.** This has now caused four separate bugs - stacked
+optics, oversized magazines, grenade launchers, and 413 mounts holding air. Depth-first filling
+cannot know whether a rail earns its place until its children have been tried, so `prune_empty`
+cleans up afterwards rather than trying to predict it. Run `slot_audit.py` to find the next one.
+
+**The launcher case.** `mod_launcher` accepts nothing but launchers, so
 the generator dutifully hung a GP-25 under 57 builds. It conflicts with 72 other parts, and 43 of
 those builds ended up with no foregrip. Leaving the slot empty costs nothing and gave 32 builds
 their grip back. Worth asking of any slot: what does filling it actually buy?

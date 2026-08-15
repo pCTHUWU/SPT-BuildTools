@@ -76,6 +76,13 @@ TOGGLES = [
      "Give the first tactical slot to a light, preferring an AN/PEQ-style combo over a bare "
      "torch. These score zero on ergonomics and recoil, so without this they always lose."),
 
+    ("prune-empty", True,
+     "Drop parts that earn nothing",
+     "After building, remove any mount or rail left carrying nothing that also gives no "
+     "ergonomics or recoil. Depth-first filling cannot know whether a rail earns its place until "
+     "its children have been tried - 413 ended up holding air, including an Aimpoint spacer with "
+     "no Aimpoint on it 258 times. Required slots are left alone."),
+
     ("launchers", False,
      "Fit underbarrel launchers",
      "Off by default. mod_launcher accepts nothing but launchers, so leaving it empty costs "
