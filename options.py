@@ -78,13 +78,16 @@ TOGGLES = [
 
     ("short-mounts", False,
      "Shortest route to the sight",
-     "Mount the sight directly where it fits, and otherwise take the shortest mount chain. Mount "
-     "plates score positively on ergonomics, so without this the optimiser is rewarded for "
-     "stacking them - the VSK-94 ended up with four mounting parts under one scope, netting +1.5 "
-     "ergonomics so nothing in the objective ever objected.\n\nOFF by default: it does remove the "
-     "towers, but it also cost rifle-calibre builds 58 of their magnified optics (83 scopes down "
-     "to 15) and the cause is not yet understood - capping the chain and fixing the memo both "
-     "left the numbers byte-identical, so the deciding code is somewhere else."),
+     "Mount the sight directly where it fits, and otherwise take the shortest mount chain, scoring "
+     "each route by the best sight it reaches against the parts needed to get there.\n\n"
+     "**This no longer owns the tower problem.** Mount plates score positively on ergonomics, so "
+     "the optimiser was rewarded for stacking them - the VSK-94 wore four under one scope. That is "
+     "now capped unconditionally in `narrow()` at `MAX_MOUNTS`, whatever this toggle says. The cap "
+     "used to live behind this flag, which is why capping the chain and fixing the memo both left "
+     "the numbers byte-identical: with the toggle off, none of that code ran at all.\n\n"
+     "OFF by default because the route *scoring* here still costs rifle-calibre builds 58 of their "
+     "magnified optics (83 scopes down to 15), and that cause is genuinely not understood yet. "
+     "Capping and choosing are separate concerns; only the choosing is still in question."),
 
     ("prune-empty", True,
      "Drop parts that earn nothing",

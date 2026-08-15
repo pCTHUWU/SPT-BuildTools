@@ -284,7 +284,7 @@ def optic_tiers(cands, policy):
 # How many mounting parts a sight is worth. Two adapters to reach a scope is a mount;
 # four is a tower, and the ergonomics score rewards building one because plates read
 # positive. Past this the best sight reachable within the cap wins instead.
-MAX_MOUNTS = 3      # mounting parts allowed between gun and sight
+MAX_MOUNTS = 2      # plates allowed between gun and sight; enforced always, not just short-mounts
 LOOKAHEAD  = 4      # how far to search for a sight when judging a route
 
 NOT_MOUNTING = ("Silencer", "Barrel", "Receiver", "Handguard", "GasBlock", "Stock",
@@ -436,7 +436,11 @@ def narrow(cands, slot_name, placed, chain=()):
     # Stop the tower. Mount plates read positive on ergonomics, so each step was happy to add
     # one more; the optic block below never saw these slots because they offer no optic of their
     # own. Once MAX_MOUNTS plates are under the sight, only a sight itself may go on.
-    if OPT["short-mounts"] and (slot_name or "").startswith(("mod_scope", "mod_sight", "mod_mount")):
+    # Deliberately NOT gated on short-mounts. That toggle also rewrites optic selection, which is
+    # what cost 58 magnified optics, and every use of MAX_MOUNTS used to sit behind it - so with
+    # the toggle off (the default) the cap was dead code and changing it did nothing at all.
+    # Capping the stack and choosing the optic are separate concerns; only the first belongs here.
+    if (slot_name or "").startswith(("mod_scope", "mod_sight", "mod_mount")):
         if sum(1 for t in chain if is_mounting_part(t)) >= MAX_MOUNTS:
             sights = [c for c in cands if is_optic(c)]
             if not sights:
