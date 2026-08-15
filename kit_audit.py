@@ -35,7 +35,7 @@ def obtainable(tpl):
 findings = collections.OrderedDict(
     (k, []) for k in ("torso uncovered", "missing essential", "dead weight", "unobtainable",
                       "absurd class", "fragmented backpack", "net-negative container",
-                      "double armour"))
+                      "double armour", "blocked slot", "empty zone"))
 
 for b in gen.builds:
     items = b["Items"]
@@ -61,6 +61,43 @@ for b in gen.builds:
 
     if rig_armoured and "ArmorVest" in slots_worn:
         findings["double armour"].append((b["Name"], "body armour worn under an armoured rig"))
+
+    # Two pieces the game will not wear together. This is the check that would have caught the
+    # Death Shadow mask sitting over the Condor glasses: the exclusion lives in a Blocks* flag,
+    # not in ConflictingItems, so nothing that reads conflict lists could see it. The failure is
+    # invisible until the build screen refuses to equip, and even then it only says "... is
+    # blocking this slot" without naming the culprit.
+    # An armour zone the kit could have filled and did not. A carrier is bought for the zones it
+    # opens, so leaving one bare is paying the carrier's weight for nothing - and it is invisible
+    # in the class number, which reads the same whether the side plates are in or not. Judged
+    # against the tier's own shelf: a zone with no plate a loyalty 1 trader will sell is not a
+    # fault of the loadout.
+    lvl = gen.LEVEL_OF[b["Id"]]
+    placed = {i["_tpl"] for i in items}
+    for i in items[1:]:      # zones inside worn kit; the root's own FaceCover and Eyewear are a
+                             # choice the generator is allowed to decline, not a bare zone
+        for s in db[i["_tpl"]]["_props"].get("Slots", []) or []:
+            if not gen.armour_slot(s) or any(k.get("parentId") == i["_id"]
+                                             and k.get("slotId") == s["_name"] for k in items):
+                continue
+            # Armoured candidates only, the same test the generator forces the slot on. A slot that
+            # merely *can* take armour is not a bare zone when the only thing that actually fits is
+            # an NVG mount - which is what mod_nvg is on most helmets once the face shield it
+            # shares its filter with is already worn.
+            fits = [c for c in gen.expand(s["_props"]["filters"][0]["Filter"])
+                    if gen.armor(c) > 0 and gen.usable(c) and c not in placed
+                    and gen.compatible(c, placed)
+                    and (lvl is None or (loyalty.get(c) is not None and loyalty[c] <= lvl))]
+            if fits:
+                findings["empty zone"].append(
+                    (b["Name"], f"{s['_name']} on {name(i['_tpl'])[:24]} - {len(fits)} would fit"))
+
+    for i in worn:
+        for flag, shut in gen.BLOCKS.items():
+            if db[i["_tpl"]]["_props"].get(flag) is True and shut in slots_worn:
+                other = next(w for w in worn if w.get("slotId") == shut)
+                findings["blocked slot"].append(
+                    (b["Name"], f"{name(i['_tpl'])[:30]} blocks {shut} - {name(other['_tpl'])[:24]}"))
 
     for i in items[1:]:
         tpl, slot = i["_tpl"], i.get("slotId")
