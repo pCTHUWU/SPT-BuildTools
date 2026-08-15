@@ -131,7 +131,11 @@ def usable(tpl):
     p = it["_props"]
     if p.get("QuestItem"):
         return False
-    if p.get("CanSellOnRagfair") is False:   # must be flea-obtainable for the buy test
+    # A part has to be purchasable at the trader level a build describes; meta builds assume max
+    # standing and full availability. Being sellable on the flea is a different question and only
+    # matters if these builds are being used to exercise a flea-buying mod - it was on by default
+    # and quietly excluded good kit, the SureFire MAG5-60 among it.
+    if OPT["flea-only"] and p.get("CanSellOnRagfair") is False:
         return False
     return True
 

@@ -76,6 +76,13 @@ TOGGLES = [
      "Give the first tactical slot to a light, preferring an AN/PEQ-style combo over a bare "
      "torch. These score zero on ergonomics and recoil, so without this they always lose."),
 
+    ("flea-only", False,
+     "Only use parts sellable on the flea",
+     "Off by default: a part needs to be purchasable at the trader level a build describes, and "
+     "meta builds assume max trader standing and full availability. Turning it on restricts every "
+     "part to `CanSellOnRagfair`, which is what you want if the builds are being used to exercise "
+     "a flea-buying mod - but it excludes plenty of good kit, the SureFire MAG5-60 among it."),
+
     ("compact-mags", True,
      "No magazines wider than 2 slots",
      "Skip magazines that take 3 or more grid slots. An extended magazine that still fits in the "

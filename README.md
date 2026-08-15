@@ -32,6 +32,7 @@ running, and takes a timestamped profile backup first.
 | Toggle | Off means |
 |---|---|
 | Respect part conflicts | Ignore `ConflictingItems`. Produces builds the game refuses to assemble — it is there to show what the rule is worth, not as a normal setting. |
+| Only use parts sellable on the flea *(off by default)* | On, every part must be `CanSellOnRagfair`. Availability that matters is the trader level a build describes, and meta builds assume max standing — so this is off. Turn it on only to exercise a flea-buying mod. |
 | Always fit a stock | 55 builds end up with no shoulder stock. |
 | One optic per gun | About a third of builds carry two or more sights. |
 | Match optic to calibre | The ergonomics score picks a red dot for nearly everything. |
@@ -110,9 +111,12 @@ to itself it put a 40-round three-slot PMAG on the M4A1 when a two-slot 60-round
 available — worse on both counts, but better on ergonomics. `shape_ok` now refuses any swap that
 grows the magazine's footprint, or that shrinks its capacity on an automatic.
 
-**`usable` requires a part be flea-obtainable**, since these builds exist to exercise the flea
-purchase path. That legitimately excludes some well-known magazines — the SureFire MAG5-60 has
-`CanSellOnRagfair: false` — so the best two-slot option is not always the one you would expect.
+**Availability means the trader level, not the flea.** `usable` used to require every part be
+`CanSellOnRagfair`, which silently excluded good kit — the SureFire MAG5-60 and the PMAG D-60 among
+it — and made the best two-slot magazine look worse than it is. A part needs to be purchasable at
+the trader level a build describes; meta builds assume max standing and full availability. The old
+behaviour survives as the `flea-only` toggle, off by default, for when the builds are being used to
+exercise a flea-buying mod.
 
 ## How parts are chosen
 

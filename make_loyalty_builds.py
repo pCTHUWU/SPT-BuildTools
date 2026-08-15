@@ -114,7 +114,11 @@ def usable(tpl):
     it = db.get(tpl)
     if not it or not it.get("_props") or it["_props"].get("QuestItem"):
         return False
-    return it["_props"].get("CanSellOnRagfair") is not False
+    # See make_builds.py. Trader level is the availability that matters here; the flea rule is
+    # only for exercising a flea-buying mod, and it excluded good kit by default.
+    if OPT["flea-only"] and it["_props"].get("CanSellOnRagfair") is False:
+        return False
+    return True
 
 SKIP = {"mod_charge_001"}
 
