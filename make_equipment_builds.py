@@ -104,33 +104,46 @@ def score(tpl, w):
     wa, ws, wm = w
     return wa * armor(tpl) + ws * storage(tpl) - wm * (weight(tpl) + penalty(tpl) / 10.0)
 
-_reach = {}
-def reach(tpl, w, depth=0):
-    """What this piece is worth *once filled* - itself plus the best its own slots can hold.
+_pot = {}
+def potential(tpl, w, depth=0):
+    """(armour, storage, weight, penalty) this piece reaches once sensibly filled.
 
     A plate carrier is the equipment version of a scope mount: `armorClass = 0`, no storage, some
     weight, so judged alone it scores negative and gets dropped for not earning its place. That is
     exactly what happened - the first run fitted no helmet, no body armour and no plates at all,
     and took its only protection from a face mask. Its worth is the plates it can carry, so look
     ahead the way optic_reach does for sights.
+
+    The axes combine the way they do in reality, which is the fix for the second round of this
+    bug: **armour takes the max, everything else sums**. Summing armour made a ten-slot carrier
+    outscore a four-slot one at the same class, so the optimiser hung eleven plates on one vest
+    and called 31.9kg good. You are rated at the class covering you; each extra plate past that
+    is only weight, and now scores as only weight.
     """
     key = (tpl, w, depth)
-    if key in _reach:
-        return _reach[key]
-    total = score(tpl, w)
+    if key in _pot:
+        return _pot[key]
+    wa, ws, wm = w
+    a, s, wt, pen = armor(tpl), storage(tpl), weight(tpl), penalty(tpl)
     if depth < 3:
-        for s in db[tpl]["_props"].get("Slots", []) or []:
-            best = None
-            for c in expand(s["_props"]["filters"][0]["Filter"]):
+        for slot in db[tpl]["_props"].get("Slots", []) or []:
+            best, best_v = None, 0.0
+            for c in expand(slot["_props"]["filters"][0]["Filter"]):
                 if not usable(c):
                     continue
-                v = reach(c, w, depth + 1)
-                if v > 0 and (best is None or v > best):
-                    best = v
+                ca, cs, cwt, cpen = potential(c, w, depth + 1)
+                v = wa * ca + ws * cs - wm * (cwt + cpen / 10.0)
+                if v > best_v:
+                    best, best_v = (ca, cs, cwt, cpen), v
             if best:
-                total += best
-    _reach[key] = total
-    return total
+                a = max(a, best[0]); s += best[1]; wt += best[2]; pen += best[3]
+    _pot[key] = (a, s, wt, pen)
+    return _pot[key]
+
+def reach(tpl, w):
+    wa, ws, wm = w
+    a, s, wt, pen = potential(tpl, w)
+    return wa * a + ws * s - wm * (wt + pen / 10.0)
 
 
 def kit_stats(items):
@@ -187,6 +200,13 @@ def fill(tpl, parent_id, slot_name, depth, placed, w, level, out, top=False):
         # Judge on what the piece is worth once filled, not bare - see reach().
         best = max(cands, key=lambda c: reach(c, w))
         if not s["_required"] and reach(best, w) <= 0:
+            continue
+        # You are rated at the class covering you, so a plate no better than what is already on
+        # buys nothing and weighs something. This model has no zone coverage, so it cannot tell a
+        # side plate from a redundant front one - it errs toward the lighter kit rather than
+        # hanging ten plates on a carrier, which is the failure it replaces.
+        worn = max((armor(i["_tpl"]) for i in out), default=0)
+        if not s["_required"] and armor(best) and armor(best) <= worn and not storage(best):
             continue
         fill(best, node["_id"], nm, depth + 1, placed, w, level, out)
 
