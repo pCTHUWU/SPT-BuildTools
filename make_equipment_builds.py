@@ -86,6 +86,24 @@ def storage(tpl):
     return sum(num(g["_props"].get("cellsH")) * num(g["_props"].get("cellsV"))
                for g in (db[tpl]["_props"].get("Grids") or []))
 
+def biggest(tpl):
+    """Largest single contiguous grid. Total cells alone says a rig is as useful as a backpack:
+    the Crye AVS carries 23 cells but across *twelve* pouches whose largest is 2x2, so nothing
+    bulky fits in any of them, while an LBT-2670 puts 48 in one 6x8 that takes almost anything.
+    Cells say what you can carry; this says what shape it can be."""
+    return max((num(g["_props"].get("cellsH")) * num(g["_props"].get("cellsV"))
+                for g in (db[tpl]["_props"].get("Grids") or [])), default=0)
+
+def footprint(tpl):
+    """The space the item itself occupies. A container earns its place when it holds more than it
+    takes up - the usual EFT judgement on cases. Worn kit does not occupy grid space, so this only
+    bites for anything nested inside something else."""
+    p = db[tpl]["_props"]
+    return num(p.get("Width")) * num(p.get("Height"))
+
+def net_cells(tpl):
+    return storage(tpl) - footprint(tpl)
+
 def weight(tpl):
     return num(db[tpl]["_props"].get("Weight"))
 
@@ -100,9 +118,15 @@ def armor(tpl):
     return num(db[tpl]["_props"].get("armorClass"))
 
 
+def useful_space(cells, big):
+    """Cells you can actually use. Half-weighting the largest grid rewards one big pocket over the
+    same count split into many small ones, without pretending the small ones are worthless."""
+    return cells + 0.5 * big
+
 def score(tpl, w):
     wa, ws, wm = w
-    return wa * armor(tpl) + ws * storage(tpl) - wm * (weight(tpl) + penalty(tpl) / 10.0)
+    return (wa * armor(tpl) + ws * useful_space(storage(tpl), biggest(tpl))
+            - wm * (weight(tpl) + penalty(tpl) / 10.0))
 
 _pot = {}
 def potential(tpl, w, depth=0):
@@ -124,26 +148,30 @@ def potential(tpl, w, depth=0):
     if key in _pot:
         return _pot[key]
     wa, ws, wm = w
-    a, s, wt, pen = armor(tpl), storage(tpl), weight(tpl), penalty(tpl)
+    a, s, big = armor(tpl), storage(tpl), biggest(tpl)
+    wt, pen = weight(tpl), penalty(tpl)
     if depth < 3:
         for slot in db[tpl]["_props"].get("Slots", []) or []:
             best, best_v = None, 0.0
             for c in expand(slot["_props"]["filters"][0]["Filter"]):
                 if not usable(c):
                     continue
-                ca, cs, cwt, cpen = potential(c, w, depth + 1)
-                v = wa * ca + ws * cs - wm * (cwt + cpen / 10.0)
+                ca, cs, cbig, cwt, cpen = potential(c, w, depth + 1)
+                v = wa * ca + ws * useful_space(cs, cbig) - wm * (cwt + cpen / 10.0)
                 if v > best_v:
-                    best, best_v = (ca, cs, cwt, cpen), v
+                    best, best_v = (ca, cs, cbig, cwt, cpen), v
             if best:
-                a = max(a, best[0]); s += best[1]; wt += best[2]; pen += best[3]
-    _pot[key] = (a, s, wt, pen)
+                # Armour and pocket size take the max - a second class-4 plate and a second small
+                # pouch each add nothing you did not have. Cells, weight and penalty accumulate.
+                a = max(a, best[0]); s += best[1]; big = max(big, best[2])
+                wt += best[3]; pen += best[4]
+    _pot[key] = (a, s, big, wt, pen)
     return _pot[key]
 
 def reach(tpl, w):
     wa, ws, wm = w
-    a, s, wt, pen = potential(tpl, w)
-    return wa * a + ws * s - wm * (wt + pen / 10.0)
+    a, s, big, wt, pen = potential(tpl, w)
+    return wa * a + ws * useful_space(s, big) - wm * (wt + pen / 10.0)
 
 
 def kit_stats(items):
@@ -156,11 +184,12 @@ def kit_stats(items):
     penalty axes then push toward the lightest way to reach it, which is how the real meta works
     (a Slick is chosen for costing nothing, and the plates do the protecting).
     """
-    a = s = wt = pen = 0
+    a = s = big = wt = pen = 0
     for i in items[1:]:
         a = max(a, armor(i["_tpl"])); s += storage(i["_tpl"])
+        big = max(big, biggest(i["_tpl"]))
         wt += weight(i["_tpl"]); pen += penalty(i["_tpl"])
-    return a, s, round(wt, 2), round(pen, 1)
+    return a, s, big, round(wt, 2), round(pen, 1)
 
 
 def compatible(tpl, placed):
@@ -216,15 +245,16 @@ def make(level):
     for w in WEIGHT_SWEEP:
         items, placed = [], set()
         fill(INVENTORY, None, None, 0, placed, w, level, items, top=True)
-        a, s, wt, pen = kit_stats(items)
-        variants.append(((a, s, -wt, -pen), (items, w)))
+        a, s, big, wt, pen = kit_stats(items)
+        variants.append(((a, useful_space(s, big), -wt, -pen), (items, w)))
     front = pareto_front(variants) or variants
     return _knee(front)[1][0]
 
 
 def label(items):
-    a, s, wt, pen = kit_stats(items)
-    return f"armor {a:>3}  storage {s:>3}  weight {wt:>6.2f}kg  penalty {pen:>6.1f}"
+    a, s, big, wt, pen = kit_stats(items)
+    return (f"armor {a:>3}  cells {s:>3} (largest {big:>2})  "
+            f"weight {wt:>6.2f}kg  penalty {pen:>5.1f}")
 
 
 levels = [1, 2, 3, 4] if "--all" in sys.argv else [4]
@@ -240,7 +270,13 @@ for lvl in levels:
     for i in worn:
         kids = [k for k in items if k.get("parentId") == i["_id"]]
         extra = f"  + {len(kids)} plate(s)" if kids else ""
-        print(f"        {i['slotId']:<17} {name(i['_tpl'])[:44]}{extra}")
+        # Net cells only means anything for something that occupies space to give space. Worn kit
+        # does not, so it is shown for information rather than scored - it becomes a real axis if
+        # this ever starts packing cases inside the bag.
+        if storage(i["_tpl"]):
+            extra += (f"  [{storage(i['_tpl']):.0f} cells, largest {biggest(i['_tpl']):.0f},"
+                      f" net {net_cells(i['_tpl']):+.0f}]")
+        print(f"        {i['slotId']:<17} {name(i['_tpl'])[:40]}{extra}")
 
 if "--write" in sys.argv:
     prof = json.load(io.open(PROF, encoding="utf-8"))
