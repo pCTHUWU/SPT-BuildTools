@@ -24,8 +24,11 @@ TAG = "(kit)"
 
 # Worn slots worth optimising. Weapons belong to the other generators; Dogtag and ArmBand are
 # cosmetic; Pockets is fixed by the profile and not a choice.
+# SecuredContainer is deliberately absent. You always have one, they are not purchasable, and
+# including it put an unbuyable "Secure container Beta" in every kit - which then showed as NOT
+# AVAILABLE on the buy-parts screen and in anything trying to restock the kit.
 WORN = ["Headwear", "Earpiece", "FaceCover", "Eyewear", "ArmorVest", "TacticalVest",
-        "Backpack", "SecuredContainer", "Scabbard"]
+        "Backpack", "Scabbard"]
 
 # Necessary gear: filled whatever it scores. A headset protects nothing and carries nothing, so on
 # the four axes it reads as pure weight and the generator dropped it from every loadout - the same
