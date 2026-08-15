@@ -122,6 +122,20 @@ TOGGLES = [
      "so magazines there are judged on handling like any other part. Off, every gun reaches for "
      "the biggest magazine it can take."),
 
+    ("pareto", False,
+     "Pick from a Pareto frontier (UNFINISHED)",
+     "Build several candidates per gun across a range of ergonomics-versus-recoil weightings, "
+     "keep the ones nothing else beats outright on ergonomics, accuracy and vertical recoil, and "
+     "take the knee of that set. One fixed weighting bakes the same trade into every weapon and it "
+     "is the wrong trade at both ends. Also decides the suppressor: a can that costs more "
+     "ergonomics than it is worth loses to the loud build rather than overriding it.\n\n"
+     "OFF and UNFINISHED: only make_builds.py implements it, so turning it on would have the meta "
+     "and loyalty generators choosing parts by different rules. Port it to make_loyalty_builds.py "
+     "before switching this on. Results so far look strong - M4A1 ergonomics 68 to 116 at "
+     "identical recoil, G36 28 to 80 - but the ergonomics figure needs checking against the "
+     "in-game number first: a raw sum of 116 against db4tarkov's 65.6 suggests the two are not "
+     "the same scale, even though recoil matches exactly."),
+
     ("refine", True,
      "Refine the finished gun",
      "After building, sweep the weapon swapping parts for alternatives and keep anything that "

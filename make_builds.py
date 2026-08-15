@@ -707,13 +707,78 @@ def prune_empty(items):
             return items
         items.remove(drop)
 
+# One fixed weighting bakes the same ergonomics-versus-recoil trade into every gun, and it is the
+# wrong trade at both ends. Build several and keep the ones nothing else beats outright.
+WEIGHT_SWEEP = [(1.0, 2.0), (1.4, 1.4), (1.8, 0.8)]
+
+# Ergonomics worth giving up to be quiet. The SVD's rotor43 costs 22 and buys no recoil, which is
+# not a trade worth forcing; a typical AR can costs 5-13 and is.
+SUPPRESSOR_ERGO_BUDGET = 12
+
+def dominates(a, b):
+    """Three axes: ergonomics up, accuracy up, vertical recoil down. `a` dominates `b` if it is no
+    worse on any of them and better on at least one."""
+    return all(x >= y for x, y in zip(a[:2], b[:2])) and a[2] <= b[2] \
+        and (a[0] > b[0] or a[1] > b[1] or a[2] < b[2])
+
+def pareto_front(points):
+    return [p for i, p in enumerate(points)
+            if not any(dominates(q[0], p[0]) for j, q in enumerate(points) if j != i)]
+
+def _knee(pool):
+    """The point closest to the ideal corner once each axis is normalised over the pool."""
+    es = [p[0][0] for p in pool]
+    ac = [p[0][1] for p in pool]
+    rc = [p[0][2] for p in pool]
+
+    def norm(v, lo, hi, invert=False):
+        if hi == lo:
+            return 1.0
+        t = (v - lo) / (hi - lo)
+        return 1 - t if invert else t
+
+    return max(pool, key=lambda p: norm(p[0][0], min(es), max(es))
+                                 + norm(p[0][1], min(ac), max(ac))
+                                 + norm(p[0][2], min(rc), max(rc), invert=True))
+
 def make(weapon_tpl):
     global POLICY
     POLICY = optic_policy(weapon_tpl)
-    w = weapon_weights(weapon_tpl)
-    items, placed = [], set()
-    grow(weapon_tpl, None, None, 0, (), placed, w, items)
-    return prune_empty(refine(items, w)), w
+
+    if not OPT["pareto"]:
+        w = weapon_weights(weapon_tpl)
+        items, placed = [], set()
+        grow(weapon_tpl, None, None, 0, (), placed, w, items)
+        return prune_empty(refine(items, w)), w
+
+    wanted_suppressed = OPT["suppressor"]
+    variants = []
+    for suppressed in ([True, False] if wanted_suppressed else [False]):
+        OPT["suppressor"] = suppressed          # single-threaded; restored below
+        for w in WEIGHT_SWEEP:
+            items, placed = [], set()
+            grow(weapon_tpl, None, None, 0, (), placed, w, items)
+            items = prune_empty(refine(items, w))
+            ergo, up, _back, _pct, acc = build_stats(items)
+            variants.append(((ergo, acc, up), (items, w, suppressed)))
+    OPT["suppressor"] = wanted_suppressed
+
+    front = pareto_front(variants) or variants
+
+    # Suppressed by preference, but only while it stays affordable. This is what "if the ergo loss
+    # is not worth it, it should not override" means in numbers: take the quiet build unless going
+    # loud buys back more than the budget.
+    pool = front
+    if wanted_suppressed:
+        quiet = [p for p in front if p[1][2]]
+        loud = [p for p in front if not p[1][2]]
+        if quiet:
+            best_quiet = max(q[0][0] for q in quiet)
+            best_loud = max((l[0][0] for l in loud), default=best_quiet)
+            pool = quiet if best_loud - best_quiet <= SUPPRESSOR_ERGO_BUDGET else loud
+
+    chosen = _knee(pool)
+    return chosen[1][0], chosen[1][1]
 
 builds = []
 missing = []
