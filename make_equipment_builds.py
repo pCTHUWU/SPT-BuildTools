@@ -29,12 +29,39 @@ WORN = ["Headwear", "Earpiece", "FaceCover", "Eyewear", "ArmorVest", "TacticalVe
 
 # Necessary gear: filled whatever it scores. A headset protects nothing and carries nothing, so on
 # the four axes it reads as pure weight and the generator dropped it from every loadout - the same
-# shape as the bare plate carrier scoring negative. Hearing is not on the axes and cannot easily be:
-# the audio fields are near-uniform across all 15 headsets (AmbientVolume -50, DryVolume -60 on
-# every one), and the real differences are compressor and EQ curves that do not reduce to a number.
-# So it is required rather than scored, and chosen on weight among what the tier can buy.
+# shape as the bare plate carrier scoring negative.
 # ArmorVest is in the list but still yields to an armoured rig - the plates are then in the rig.
 ESSENTIAL = {"Earpiece", "Headwear", "TacticalVest", "Backpack", "ArmorVest"}
+
+# What a headset is *for* is hearing range, and the database does not carry it: all 15 read
+# AmbientVolume -50 and DryVolume -60, the real differences being compressor and EQ curves that do
+# not reduce to a number. Scoring on the numbers that *are* present meant scoring on weight.
+#
+# Sprint hearing distance in metres, from the official wiki's Earpieces table
+# (escapefromtarkov.fandom.com/wiki/Earpieces). Stated policy from a cited source, the way
+# optic_rank encodes an optic preference - not a derived stat, and not guesswork.
+#
+# Worth keeping the numbers rather than tiers: a tier-list article consulted first had the Safariland
+# Liberator as poor (it is 66m, near the top), the GSSh-01 as "barely better than nothing" (62m,
+# mid-pack), and the ComTac II as solid (60m, below the GSSh). Wearing nothing at all is 53m, so
+# the whole spread is 14m and the bottom few headsets are worth very little over bare ears.
+#
+# Order matters - "ComTac V" is a prefix of "ComTac VI", so VI is tested first.
+NO_EARPIECE_RANGE = 53
+HEADSET_RANGE = [("ComTac VI", 67), ("ComTac V", 67), ("ComTac IV", 66),
+                 ("Liberator", 66), ("FAST RAC", 66),
+                 ("XCEL", 63), ("Sordin", 63), ("Tactical Sport", 63),
+                 ("GSSh", 62), ("Earmor M32", 61), ("ComTac II", 60),
+                 ("Razor", 59), ("ProFlex", 59), ("TEP-300", 54)]
+
+def hearing(tpl):
+    """Sprint hearing distance in metres. Unknown headsets fall back to bare ears rather than an
+    optimistic guess - a headset nobody has measured should not win on assumption."""
+    n = (name(tpl) or "").lower()
+    for frag, m in HEADSET_RANGE:
+        if frag.lower() in n:
+            return m
+    return NO_EARPIECE_RANGE
 
 # Weightings swept over (protection, storage, mobility). Mobility covers weight and the movement,
 # turn and ergonomics penalties together - they are the same currency to the player.
@@ -249,8 +276,13 @@ def fill(tpl, parent_id, slot_name, depth, placed, w, level, out, top=False):
         if not cands:
             continue
         must = s["_required"] or (top and nm in ESSENTIAL)
-        # Judge on what the piece is worth once filled, not bare - see reach().
-        best = max(cands, key=lambda c: reach(c, w))
+        if nm == "Earpiece":
+            # Hearing first, weight only to break a tie. Every other axis is blind to what a
+            # headset does, so leaving this to reach() picks the lightest and calls it best.
+            best = max(cands, key=lambda c: (hearing(c), -weight(c)))
+        else:
+            # Judge on what the piece is worth once filled, not bare - see reach().
+            best = max(cands, key=lambda c: reach(c, w))
         if not must and reach(best, w) <= 0:
             continue
         # You are rated at the class covering you, so a plate no better than what is already on
